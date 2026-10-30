@@ -1,5 +1,6 @@
 
 import { supabase } from '../supabase';
+import { logger } from '../../utils/logger';
 
 export async function consultarIndicadoresAdministracion() {
   const [
@@ -36,7 +37,7 @@ export async function consultarIndicadoresAdministracion() {
   const error = resultados.find((resultado) => resultado.error);
 
   if (error) {
-    console.error('Error consultando indicadores:', error.error);
+    logger.error('Error consultando indicadores:', error.error);
     throw error.error;
   }
 

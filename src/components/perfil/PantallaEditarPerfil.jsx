@@ -24,6 +24,7 @@ import {
 
 import EncabezadoPetCare from '../layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../layout/MenuLateralDerecho';
+import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -189,7 +190,7 @@ export default function PantallaEditarPerfil({
       setEstadoCuenta(data.estado_cuenta || '');
       setFechaRegistro(data.fecha_registro || '');
     } catch (e) {
-      console.error('RF05: error al cargar perfil:', e);
+      logger.error('RF05: error al cargar perfil:', e);
       setError(
         e?.message === 'No se encontró una sesión activa.'
           ? e.message
@@ -332,7 +333,7 @@ export default function PantallaEditarPerfil({
 
       onGuardado?.();
     } catch (e) {
-      console.error('RF05: error al guardar perfil:', e);
+      logger.error('RF05: error al guardar perfil:', e);
 
       const mensaje = e?.message || MENSAJES_RF05.guardar;
 

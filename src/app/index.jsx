@@ -17,6 +17,7 @@ import { iniciarSesionConCorreo } from '../services/autenticacionServicio';
 import { verificarCuentaActiva } from '../services/perfilServicio';
 import { verificarSesionPersistida } from '../services/sesionPersistenciaServicio';
 import { supabase } from '../services/supabase';
+import { logger } from '../utils/logger';
 
 const COLORES = {
   fondo: '#F4F8F7',
@@ -71,7 +72,7 @@ export default function PantallaInicioSesion() {
           router.replace('/inicio');
         }
       } catch (error) {
-        console.error(
+        logger.error(
           'RF04 - Error al comprobar la sesión:',
           error?.message || error
         );
@@ -142,7 +143,7 @@ export default function PantallaInicioSesion() {
         }
       }, 1500);
     } catch (error) {
-      console.error('RF01 - Error al iniciar sesión:', error);
+      logger.error('RF01 - Error al iniciar sesión:', error);
 
       mostrarMensaje(
         'No se pudo iniciar sesión. Inténtelo nuevamente.',

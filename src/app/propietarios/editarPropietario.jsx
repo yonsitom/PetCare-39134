@@ -26,6 +26,7 @@ import {
 } from '../../dao/propietarioDAO';
 
 import { supabase } from '../../services/supabase';
+import { logger } from '../../utils/logger';
 
 // ============================================================
 // COLORES DE LA INTERFAZ
@@ -156,7 +157,7 @@ export default function EditarPropietario() {
       );
       setRolUsuario(data?.rol || '');
     } catch (error) {
-      console.error('Error al cargar el perfil:', error);
+      logger.error('Error al cargar el perfil:', error);
       setNombreUsuario('Usuario');
       setRolUsuario('');
     }
@@ -199,7 +200,7 @@ export default function EditarPropietario() {
         observaciones: propietario.observaciones || '',
       });
     } catch (error) {
-      console.error('Error al cargar propietario:', error);
+      logger.error('Error al cargar propietario:', error);
 
       Alert.alert(
         'Error',
@@ -360,7 +361,7 @@ export default function EditarPropietario() {
         ],
       );
     } catch (error) {
-      console.error('Error al actualizar propietario:', error);
+      logger.error('Error al actualizar propietario:', error);
 
       Alert.alert(
         'No se pudo actualizar',

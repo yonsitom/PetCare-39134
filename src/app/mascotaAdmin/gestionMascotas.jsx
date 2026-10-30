@@ -23,6 +23,7 @@ import {
   consultarMascotas,
   desactivarMascota,
 } from '../../dao/mascotaDAO';
+import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -145,7 +146,7 @@ export default function GestionMascotas() {
       setNombreUsuario(data.nombre_completo || 'Usuario');
       setRolUsuario(data.rol || 'Asistente');
     } catch (e) {
-      console.error('Error al cargar perfil:', e.message);
+      logger.error('Error al cargar perfil:', e.message);
     }
   }, []);
 
@@ -174,7 +175,7 @@ export default function GestionMascotas() {
         setError('');
       }
     } catch (e) {
-      console.error('Error al cargar mascotas:', e);
+      logger.error('Error al cargar mascotas:', e);
 
       setError(
         'No se pudieron cargar las mascotas. Intenta nuevamente.'
@@ -233,7 +234,7 @@ export default function GestionMascotas() {
 
       if (detalle) setMascotaSeleccionada(detalle);
     } catch (e) {
-      console.error('Error al consultar detalle:', e.message);
+      logger.error('Error al consultar detalle:', e.message);
       Alert.alert(
         'Error',
         'No se pudo cargar toda la información de la mascota.'
@@ -349,7 +350,7 @@ export default function GestionMascotas() {
           });
         }
       } catch (errorDetalle) {
-        console.error(
+        logger.error(
           'No se pudo recargar el detalle de la mascota:',
           errorDetalle
         );
@@ -372,7 +373,7 @@ export default function GestionMascotas() {
       try {
         await cargarMascotas(busqueda);
       } catch (errorLista) {
-        console.error(
+        logger.error(
           'No se pudo recargar el listado de mascotas:',
           errorLista
         );
@@ -386,7 +387,7 @@ export default function GestionMascotas() {
       );
       setModalResultadoVisible(true);
     } catch (e) {
-      console.error(
+      logger.error(
         'Error al cambiar el estado de la mascota:',
         e
       );
@@ -429,7 +430,7 @@ const cerrarSesion = async () => {
     // Volver a la pantalla de inicio de sesión.
     router.replace('/');
   } catch (error) {
-    console.error('Error al cerrar sesión:', error);
+    logger.error('Error al cerrar sesión:', error);
 
     // El menú lateral se encarga de mostrar el error.
     throw error;
