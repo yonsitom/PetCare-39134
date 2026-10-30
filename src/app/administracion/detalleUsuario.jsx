@@ -15,9 +15,10 @@ import {
   View,
 } from 'react-native';
 
-import { router, useLocalSearchParams } from 'expo-router';
-import { supabase } from '../../services/supabase';
-
+import { router, useLocalSearchParams } from 'expo-router';import { supabase } from '../../services/supabase';
+import {
+  gestionarCambioEstadoCuenta,
+} from '../../services/administracion/usuariosService';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 import { logger } from '../../utils/logger';
@@ -185,10 +186,21 @@ export default function DetalleUsuario() {
     }
   }, [id]);
 
-  useEffect(() => {
-    cargarUsuario();
-  }, [cargarUsuario]);
+useEffect(() => {
+  let activo = true;
 
+  const cargar = async () => {
+    if (!activo) return;
+
+    await cargarUsuario();
+  };
+
+  cargar();
+
+  return () => {
+    activo = false;
+  };
+}, [cargarUsuario]);
   // ==========================================
   // CAMBIAR CAMPOS DEL FORMULARIO
   // ==========================================
@@ -352,6 +364,12 @@ export default function DetalleUsuario() {
   // ACTIVAR O DESACTIVAR CUENTA
   // ==========================================
 
+    // CUS45 - MVC: la vista solicita el cambio al servicio.
+  // El servicio valida la solicitud y el DAO actualiza Supabase.
+  // CP01: cambio confirmado y persistido.
+  // CP02: cancelación sin modificar la cuenta.
+  // CP03: no se encontró una fila actualizada.
+  // CP04: error de persistencia sin mensaje de éxito.
   const cambiarEstadoCuenta = async (nuevoEstado) => {
     if (guardando || !id) return;
 
@@ -359,30 +377,35 @@ export default function DetalleUsuario() {
 
     try {
       setGuardando(true);
+      setMensajeExito('');
 
-      const {
-        data,
-        error,
-      } = await supabase
-        .from('perfiles')
-        .update({
-          estado_cuenta: nuevoEstado,
-        })
-        .eq('perfil_id', id)
-        .select('perfil_id, estado_cuenta')
-        .maybeSingle();
+      // ACT: la confirmación se produce al pulsar el botón
+      // correspondiente dentro del modal.
+      const resultado = await gestionarCambioEstadoCuenta({
+        perfilId: id,
+        nuevoEstado,
+        confirmado: true,
+      });
 
-      if (error) throw error;
+      // ASSERT: no mostrar éxito si el servicio informa un fallo.
+      if (!resultado.ok) {
+        if (resultado.cancelado) {
+          setModalDesactivar(false);
+          setModalActivar(false);
+          return;
+        }
 
-      if (!data) {
         throw new Error(
-          'Supabase no confirmó el cambio. Verifica que el perfil exista y que las políticas RLS permitan modificarlo.'
+          resultado.error ||
+            'No fue posible actualizar el estado de la cuenta.'
         );
       }
 
+      // Actualizar la interfaz solo tras confirmar la persistencia.
       setUsuario((anterior) => ({
         ...anterior,
-        estado_cuenta: data.estado_cuenta,
+        ...resultado.usuario,
+        estado_cuenta: resultado.usuario.estado_cuenta,
       }));
 
       setModalDesactivar(false);
@@ -412,7 +435,6 @@ export default function DetalleUsuario() {
       setGuardando(false);
     }
   };
-
   // ==========================================
   // CERRAR SESIÓN — RF07
   // La confirmación pertenece al menú lateral.

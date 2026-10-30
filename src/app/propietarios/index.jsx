@@ -141,14 +141,22 @@ export default function PantallaPropietarios() {
     setMostrarFormulario(true);
   };
 
-  const propietarioRegistrado = () => {
-    setMostrarFormulario(false);
-    setMensajeExito(
-      'Los datos del propietario se registraron correctamente.'
-    );
-    setBusqueda('');
-    cargarPropietarios();
-  };
+const propietarioRegistrado = () => {
+  // Cierra el formulario después de confirmar que se guardó.
+  setMostrarFormulario(false);
+
+  // Limpia el mensaje anterior y muestra uno solo de éxito.
+  setMensajeExito('');
+  setBusqueda('');
+
+  // Actualiza el listado después del registro.
+  cargarPropietarios();
+
+  // Muestra la confirmación final una sola vez.
+  setMensajeExito(
+    'Los datos del propietario se registraron correctamente.'
+  );
+};
 
   const volverALista = () => setMostrarFormulario(false);
 
@@ -264,18 +272,15 @@ export default function PantallaPropietarios() {
               )}
             </View>
 
-            {mensajeExito !== '' && (
-              <View style={estilos.mensajeExito}>
-                <Text style={estilos.iconoExito}>✓</Text>
-                <Text style={estilos.textoExito}>{mensajeExito}</Text>
-                <TouchableOpacity
-                  onPress={() => setMensajeExito('')}
-                  accessibilityLabel="Cerrar mensaje"
-                >
-                  <Text style={estilos.cerrarMensaje}>×</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+{mensajeExito !== '' && (
+  <View style={estilos.mensajeExito}>
+    <Text style={estilos.textoExito}>{mensajeExito}</Text>
+    <TouchableOpacity onPress={() => setMensajeExito('')}>
+      {/* Conserva aquí el contenido actual del botón para cerrar */}
+    </TouchableOpacity>
+  </View>
+)}
+
 
             {!cargando && !errorCarga && (
               <View style={estilos.resumen}>
@@ -368,28 +373,42 @@ export default function PantallaPropietarios() {
                   );
                 })}
 
-                {propietariosFiltrados.length === 0 && (
-                  <View style={estilos.vacio}>
-                    <Text style={estilos.iconoVacio}>⌕</Text>
-                    <Text style={estilos.tituloVacio}>
-                      No se encontraron propietarios
-                    </Text>
-                    <Text style={estilos.textoVacio}>
-                      Prueba con otro nombre, DNI, teléfono o correo.
-                    </Text>
+                
+{propietariosFiltrados.length === 0 && (
+  <View style={estilos.vacio}>
+    <Text style={estilos.iconoVacio}>⌕</Text>
 
-                    {busqueda !== '' && (
-                      <TouchableOpacity
-                        style={estilos.botonReintentar}
-                        onPress={() => setBusqueda('')}
-                      >
-                        <Text style={estilos.textoReintentar}>
-                          Limpiar búsqueda
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
+    <Text style={estilos.tituloVacio}>
+      {propietarios.length === 0 && !busqueda.trim()
+        ? 'No hay propietarios registrados.'
+        : 'No se encontraron propietarios'}
+    </Text>
+
+    {propietarios.length === 0 && !busqueda.trim() ? (
+      <Text style={estilos.textoVacio}>
+        Aún no hay propietarios registrados en el sistema.
+      </Text>
+    ) : (
+      <>
+        <Text style={estilos.textoVacio}>
+          Prueba con otro nombre, DNI, teléfono o correo.
+        </Text>
+
+        {busqueda !== '' && (
+          <TouchableOpacity
+            style={estilos.botonReintentar}
+            onPress={() => setBusqueda('')}
+          >
+            <Text style={estilos.textoReintentar}>
+              Limpiar búsqueda
+            </Text>
+          </TouchableOpacity>
+        )}
+      </>
+    )}
+  </View>
+)}
+
               </View>
             )}
           </>

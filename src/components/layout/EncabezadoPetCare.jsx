@@ -1,4 +1,3 @@
-
 import React from 'react';
 import {
   StatusBar,
@@ -8,7 +7,7 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const COLORES = {
   verdeOscuro: '#12665E',
   verdeClaro: '#D0E9E4',
   blanco: '#FFFFFF',
@@ -24,7 +23,7 @@ export default function EncabezadoPetCare({
   return (
     <View style={estilos.contenedor}>
       <StatusBar
-        backgroundColor={C.verdeOscuro}
+        backgroundColor={COLORES.verdeOscuro}
         barStyle="light-content"
       />
 
@@ -51,9 +50,7 @@ export default function EncabezadoPetCare({
               accessibilityRole="button"
               accessibilityLabel="Abrir notificaciones"
             >
-              <Text style={estilos.iconoNotificacion}>
-                ♧
-              </Text>
+              <Text style={estilos.iconoNotificacion}>♧</Text>
             </TouchableOpacity>
           )}
 
@@ -77,10 +74,14 @@ export default function EncabezadoPetCare({
 
 const estilos = StyleSheet.create({
   contenedor: {
-    backgroundColor: C.verdeOscuro,
+    width: '100%',
+    alignSelf: 'stretch',
+    flexShrink: 0,
+    backgroundColor: COLORES.verdeOscuro,
   },
 
   encabezado: {
+    width: '100%',
     minHeight: 94,
     paddingTop: 28,
     paddingHorizontal: 22,
@@ -92,6 +93,7 @@ const estilos = StyleSheet.create({
 
   marca: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -101,7 +103,7 @@ const estilos = StyleSheet.create({
   },
 
   nombreVeterinaria: {
-    color: C.verdeClaro,
+    color: COLORES.verdeClaro,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 2,
@@ -109,7 +111,7 @@ const estilos = StyleSheet.create({
   },
 
   nombrePetCare: {
-    color: C.blanco,
+    color: COLORES.blanco,
     fontSize: 25,
     fontWeight: '800',
     letterSpacing: 0.3,
@@ -125,13 +127,13 @@ const estilos = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 13,
-    backgroundColor: C.fondoBoton,
+    backgroundColor: COLORES.fondoBoton,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   iconoNotificacion: {
-    color: C.blanco,
+    color: COLORES.blanco,
     fontSize: 22,
     fontWeight: '600',
   },
@@ -140,7 +142,7 @@ const estilos = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 13,
-    backgroundColor: C.fondoBoton,
+    backgroundColor: COLORES.fondoBoton,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
@@ -150,6 +152,6 @@ const estilos = StyleSheet.create({
     width: 19,
     height: 2,
     borderRadius: 2,
-    backgroundColor: C.blanco,
+    backgroundColor: COLORES.blanco,
   },
 });

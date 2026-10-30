@@ -1,6 +1,6 @@
 
-// src/app/mascotas/index.jsx
 
+ // src/app/mascotas/index.jsx
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -19,6 +19,11 @@ import { router, useFocusEffect } from 'expo-router';
 
 import { supabase } from '../../services/supabase';
 import { consultarMascotas } from '../../dao/mascotaDAO';
+import {
+  validarTerminoBusquedaMascotas,
+  filtrarMascotasPorBusqueda,
+  obtenerMensajeResultadoBusqueda,
+} from '../../utils/validacionesBusquedaMascotas';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 import { logger } from '../../utils/logger';
@@ -56,6 +61,7 @@ export default function ListaMascotasScreen() {
   // Datos de la lista y estados de carga.
   const [mascotas, setMascotas] = useState([]);
   const [busqueda, setBusqueda] = useState('');
+  const [busquedaAplicada, setBusquedaAplicada] = useState('');
   const [cargando, setCargando] = useState(true);
   const [actualizando, setActualizando] = useState(false);
   const [error, setError] = useState('');
@@ -132,25 +138,37 @@ export default function ListaMascotasScreen() {
     }, [cargarMascotas])
   );
 
-  // Filtra por nombre, historia clínica, especie, raza o propietario.
-  const mascotasFiltradas = mascotas.filter((mascota) => {
-    const propietario = mascota?.propietarios;
+  // RF16: aplica el filtro al término que ya fue validado.
+  const mascotasFiltradas = filtrarMascotasPorBusqueda(
+    mascotas,
+    busquedaAplicada
+  );
 
-    const texto = [
-      mascota?.nombre,
-      mascota?.numero_historia,
-      mascota?.especie,
-      mascota?.raza,
-      propietario?.nombre,
-      propietario?.apellido,
-      propietario?.documento_identidad,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
+  // RF16: valida el término antes de aplicar la búsqueda.
+  function ejecutarBusqueda() {
+    const validacion = validarTerminoBusquedaMascotas(busqueda);
 
-    return texto.includes(busqueda.trim().toLowerCase());
-  });
+    if (!validacion.valido) {
+      setError(validacion.mensaje);
+      return;
+    }
+
+    setError('');
+    setBusquedaAplicada(validacion.termino);
+  }
+
+  // RF16: limpia el campo, los mensajes y el filtro aplicado.
+  function limpiarBusqueda() {
+    setBusqueda('');
+    setBusquedaAplicada('');
+    setError('');
+  }
+
+  // RF16: determina si la búsqueda válida no obtuvo coincidencias.
+  const mensajeSinResultados = obtenerMensajeResultadoBusqueda(
+    busquedaAplicada,
+    mascotasFiltradas
+  );
 
   // Abre la ficha de la mascota seleccionada.
   function abrirFicha(mascota) {
@@ -206,7 +224,7 @@ export default function ListaMascotasScreen() {
     }
   }
 
-  // Cada mascota se muestra como una fila amplia, no como una tarjeta pequeña.
+  // Cada mascota se muestra como una fila amplia.
   const renderMascota = ({ item }) => (
     <TouchableOpacity
       style={styles.filaMascota}
@@ -249,7 +267,6 @@ export default function ListaMascotasScreen() {
         backgroundColor={C.blanco}
       />
 
-      {/* Encabezado común de PetCare con acceso al menú lateral. */}
       <EncabezadoPetCare
         titulo="PetCare"
         onAbrirMenu={() => setMenuAbierto(true)}
@@ -261,15 +278,12 @@ export default function ListaMascotasScreen() {
         }
       />
 
-      {/* El contenido utiliza el ancho de la pantalla, sin una tarjeta exterior. */}
       <View style={styles.contenido}>
         <Text style={styles.migas}>Inicio / Mascotas</Text>
 
-        {/* Título, flecha de volver y botón de registro en la misma fila. */}
         <View style={styles.encabezadoPagina}>
           <View style={styles.bloqueTitulo}>
             <View style={styles.filaTitulo}>
-              {/* Botón de volver: flecha dentro de una caja blanca. */}
               <TouchableOpacity
                 style={styles.botonVolver}
                 onPress={volver}
@@ -296,6 +310,7 @@ export default function ListaMascotasScreen() {
             onPress={abrirRegistro}
             activeOpacity={0.85}
             accessibilityRole="button"
+            accessibilityLabel="Registrar nueva mascota"
           >
             <Text style={styles.textoBotonNueva}>
               + Nueva mascota
@@ -303,37 +318,54 @@ export default function ListaMascotasScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Buscador a todo el ancho disponible. */}
+        {/* RF16: búsqueda validada por botón o teclado. */}
         <View style={styles.buscador}>
           <Text style={styles.iconoBuscar}>⌕</Text>
 
           <TextInput
             style={styles.inputBusqueda}
             value={busqueda}
-            onChangeText={setBusqueda}
+            onChangeText={(texto) => {
+              setBusqueda(texto);
+              setError('');
+            }}
+            onSubmitEditing={ejecutarBusqueda}
             placeholder="Buscar por nombre, historia o propietario..."
             placeholderTextColor="#8A9996"
             returnKeyType="search"
             autoCapitalize="none"
+            accessibilityLabel="Buscar mascotas"
           />
 
           {busqueda.length > 0 && (
             <TouchableOpacity
-              onPress={() => setBusqueda('')}
+              onPress={limpiarBusqueda}
               accessibilityRole="button"
               accessibilityLabel="Limpiar búsqueda"
+              style={styles.botonLimpiar}
             >
               <Text style={styles.limpiar}>×</Text>
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity
+            onPress={ejecutarBusqueda}
+            accessibilityRole="button"
+            accessibilityLabel="Buscar mascotas"
+            style={styles.botonBuscar}
+          >
+            <Text style={styles.textoBotonBuscar}>Buscar</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Mensaje de error que no encierra el resto del contenido. */}
+        {/* Mensaje de validación o error. */}
         {!!error && (
           <TouchableOpacity
             style={styles.alertaError}
             onPress={() => setError('')}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar mensaje"
           >
             <Text style={styles.textoError}>
               {error}   ×
@@ -341,7 +373,6 @@ export default function ListaMascotasScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Lista de mascotas con actualización por gesto. */}
         {cargando ? (
           <View style={styles.centrado}>
             <ActivityIndicator
@@ -386,11 +417,17 @@ export default function ListaMascotasScreen() {
                 <Text style={styles.huellaVacia}>🐾</Text>
 
                 <Text style={styles.nombreVacio}>
-                  No se encontraron mascotas
+                  {busquedaAplicada
+                    ? 'No se encontraron mascotas'
+                    : mascotas.length === 0
+                      ? 'No hay mascotas registradas'
+                      : 'No se encontraron mascotas'}
                 </Text>
 
                 <Text style={styles.descripcionVacia}>
-                  Prueba otra búsqueda o registra una nueva mascota.
+                  {busquedaAplicada
+                    ? mensajeSinResultados
+                    : 'Puedes registrar una nueva mascota para comenzar.'}
                 </Text>
               </View>
             }
@@ -398,7 +435,6 @@ export default function ListaMascotasScreen() {
         )}
       </View>
 
-      {/* Menú lateral compartido con las demás pantallas. */}
       <MenuLateralDerecho
         visible={menuAbierto}
         onCerrar={() => setMenuAbierto(false)}
@@ -416,7 +452,6 @@ const styles = StyleSheet.create({
     backgroundColor: C.fondo,
   },
 
-  // Contenedor general sin borde ni tarjeta exterior.
   contenido: {
     flex: 1,
     paddingHorizontal: 18,
@@ -443,14 +478,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 
-  // Agrupa la flecha de volver y el título sin cambiar el estilo general.
   filaTitulo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
 
-  // Cajita blanca para el botón de volver.
   botonVolver: {
     width: 38,
     height: 38,
@@ -526,23 +559,39 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
+  botonLimpiar: {
+    paddingHorizontal: 4,
+  },
+
   limpiar: {
     fontSize: 24,
     color: C.secundario,
     paddingHorizontal: 5,
   },
 
+  botonBuscar: {
+    backgroundColor: C.primario,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    marginLeft: 4,
+  },
+
+  textoBotonBuscar: {
+    color: C.blanco,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
   lista: {
     flex: 1,
   },
 
-  // Espacio en blanco debajo de la última mascota.
   contenidoLista: {
     paddingBottom: 80,
     flexGrow: 1,
   },
 
-  // Las filas ocupan todo el ancho y tienen un borde discreto.
   filaMascota: {
     width: '100%',
     flexDirection: 'row',

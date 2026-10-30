@@ -15,6 +15,7 @@ import {
 import { router } from 'expo-router';
 import { supabase } from '../../services/supabase';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
+import { gestionarRegistroUsuario } from '../../services/administracion/gestionRegistroUsuario';
 import { logger } from '../../utils/logger';
 
 const C = {
@@ -202,14 +203,18 @@ export default function NuevoUsuario() {
   };
 
   // Esta función solo se ejecuta al pulsar "Sí, registrar" en el modal.
+    // RF44 - CP01–CP05: registro integrado con el servicio de negocio.
+  // CP06 se bloquea en validarFormulario antes de abrir la confirmación.
   const confirmarRegistro = async () => {
     if (cargando) return;
 
     setModalConfirmacionVisible(false);
     setCargando(true);
     setErrorGeneral('');
+    setErrores({});
 
     try {
+      // ARRANGE: comprobar que existe una sesión válida.
       const {
         data: { user },
         error: errorSesion,
@@ -225,6 +230,7 @@ export default function NuevoUsuario() {
         return;
       }
 
+      // ARRANGE: comprobar que el usuario es Administrador activo.
       const { data: perfil, error: errorPerfil } = await supabase
         .from('perfiles')
         .select('rol, estado_cuenta')
@@ -234,8 +240,8 @@ export default function NuevoUsuario() {
       if (errorPerfil) throw errorPerfil;
 
       if (
-        perfil.rol !== 'Administrador' ||
-        perfil.estado_cuenta !== 'Activo'
+        perfil?.rol !== 'Administrador' ||
+        perfil?.estado_cuenta !== 'Activo'
       ) {
         const mensaje = 'No tienes permisos para registrar usuarios.';
         mostrarErrores({ general: mensaje });
@@ -243,43 +249,56 @@ export default function NuevoUsuario() {
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke(
-        'administrar-usuarios',
-        {
-          body: {
-            accion: 'crear',
-            nombres: formulario.nombres.trim(),
-            apellidos: formulario.apellidos.trim(),
-            dni: formulario.dni.trim(),
-            correo: formulario.correo.trim().toLowerCase(),
-            telefono: formulario.telefono.trim() || null,
-            direccion: formulario.direccion.trim() || null,
-            contrasena: formulario.contrasena,
-            rol: formulario.rol,
-          },
+      // ACT: delegar validación y coordinación al servicio RF44.
+      const resultado = await gestionarRegistroUsuario(
+        formulario,
+        async (datos) => {
+          // ACT: mantener el registro seguro en la Edge Function.
+          const { data, error } = await supabase.functions.invoke(
+            'administrar-usuarios',
+            {
+              body: {
+                accion: 'crear',
+                ...datos,
+              },
+            }
+          );
+
+          // ASSERT: una respuesta incompleta o con error no es éxito.
+          if (error || !data?.usuario) {
+            logger.error('Respuesta del registro:', data);
+            logger.error('Error del registro:', error?.message);
+
+            return {
+              error,
+              mensaje:
+                data?.mensaje ||
+                data?.message ||
+                error?.message ||
+                '',
+              code: data?.code || error?.code || '',
+            };
+          }
+
+          return { usuario: data.usuario };
         }
       );
 
-      if (error || !data?.usuario) {
-        logger.error('Respuesta del registro:', data);
-        logger.error('Error del registro:', error?.message);
-
-        if (error?.context) {
-          try {
-            const respuesta = await error.context.clone().json();
-            logger.error('Detalle de Supabase:', respuesta);
-          } catch {
-            logger.error('No se pudo leer el detalle de la respuesta.');
-          }
+      // ASSERT: mostrar los errores de validación o del servidor.
+      if (!resultado.ok) {
+        if (resultado.errores) {
+          mostrarErrores(resultado.errores);
         }
 
-        const nuevosErrores = interpretarErrorServidor(error, data);
-        mostrarErrores(nuevosErrores);
-        if (nuevosErrores.general) setErrorGeneral(nuevosErrores.general);
+        if (resultado.mensaje) {
+          setErrorGeneral(resultado.mensaje);
+          mostrarErrores({ general: resultado.mensaje });
+        }
+
         return;
       }
 
-      // Se muestra el resumen con los datos que se enviaron al servidor.
+      // ASSERT: solo mostrar éxito cuando el servicio lo confirme.
       setUsuarioRegistrado({
         nombres: formulario.nombres.trim(),
         apellidos: formulario.apellidos.trim(),
@@ -289,16 +308,16 @@ export default function NuevoUsuario() {
         direccion: formulario.direccion.trim(),
         rol: formulario.rol,
       });
+
       setRegistroExitoso(true);
     } catch (error) {
       logger.error('Error al registrar usuario:', error);
-      const nuevosErrores = interpretarErrorServidor(error);
-      mostrarErrores(nuevosErrores);
-      if (nuevosErrores.general) {
-        setErrorGeneral(
-          'No se pudo verificar el registro. Inténtalo nuevamente.'
-        );
-      }
+
+      const mensaje =
+        'No se pudo verificar el registro. Inténtalo nuevamente.';
+
+      setErrorGeneral(mensaje);
+      mostrarErrores({ general: mensaje });
     } finally {
       setCargando(false);
     }

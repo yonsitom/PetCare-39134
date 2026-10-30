@@ -17,12 +17,12 @@ import { router } from 'expo-router';
 import { supabase } from '../../services/supabase';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
+import { consultarMascotaPorId } from '../../dao/mascotaDAO';
 import {
-  buscarMascotas,
-  consultarMascotaPorId,
-  consultarMascotas,
-  desactivarMascota,
-} from '../../dao/mascotaDAO';
+  buscarMascotasAdministracion,
+  consultarMascotasAdministracion,
+  gestionarEstadoMascota,
+} from '../../services/administracion/mascotasService';
 import { logger } from '../../utils/logger';
 
 const C = {
@@ -42,16 +42,9 @@ const C = {
 const FILTROS = ['Todas', 'Activas', 'Inactivas'];
 
 function obtenerEstado(mascota) {
-  const estado = String(mascota?.estado ?? 'Activo')
-    .trim()
-    .toLowerCase();
+  const estado = String(mascota?.estado ?? 'Activo').trim().toLowerCase();
 
-  return [
-    'inactivo',
-    'inactiva',
-    'desactivado',
-    'desactivada',
-  ].includes(estado)
+  return ['inactivo', 'inactiva', 'desactivado', 'desactivada'].includes(estado)
     ? 'Inactiva'
     : 'Activa';
 }
@@ -59,7 +52,9 @@ function obtenerEstado(mascota) {
 function obtenerPropietario(mascota) {
   const propietario = mascota?.propietarios;
 
-  if (!propietario) return 'Propietario no registrado';
+  if (!propietario) {
+    return 'Propietario no registrado';
+  }
 
   return [
     propietario.nombre,
@@ -77,7 +72,9 @@ function formatearFecha(fecha) {
 
   const valor = new Date(`${String(fecha).slice(0, 10)}T12:00:00`);
 
-  if (Number.isNaN(valor.getTime())) return 'No registrada';
+  if (Number.isNaN(valor.getTime())) {
+    return 'No registrada';
+  }
 
   return valor.toLocaleDateString('es-PE', {
     day: '2-digit',
@@ -95,7 +92,6 @@ export default function GestionMascotas() {
   const [cargando, setCargando] = useState(true);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [error, setError] = useState('');
-
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [nombreUsuario, setNombreUsuario] = useState('Usuario');
   const [rolUsuario, setRolUsuario] = useState('Administrador');
@@ -104,12 +100,10 @@ export default function GestionMascotas() {
     useState(false);
   const [mascotaPorDesactivar, setMascotaPorDesactivar] = useState(null);
   const [motivoDesactivacion, setMotivoDesactivacion] = useState('');
-  const [accionEstado, setAccionEstado] = useState('desactivar');
   const [desactivando, setDesactivando] = useState(false);
 
-  // Modal personalizado para mostrar el resultado de la operación.
   const [modalResultadoVisible, setModalResultadoVisible] = useState(false);
-  const [resultadoExitoso, setResultadoExitoso] = useState(true);
+  const [resultadoExitoso, setResultadoExitoso] = useState(false);
   const [mensajeResultado, setMensajeResultado] = useState('');
 
   const cargarPerfil = useCallback(async () => {
@@ -146,67 +140,77 @@ export default function GestionMascotas() {
       setNombreUsuario(data.nombre_completo || 'Usuario');
       setRolUsuario(data.rol || 'Asistente');
     } catch (e) {
-      logger.error('Error al cargar perfil:', e.message);
+      logger.error('Error al cargar perfil:', e);
     }
   }, []);
 
   const cargarMascotas = useCallback(async (texto = '') => {
-    const textoBusqueda = String(texto || '').trim();
+    // ARRANGE: Normalizar el término de búsqueda.
+    const textoBusqueda = String(texto ?? '').trim();
 
     try {
       setCargando(true);
       setError('');
 
-      // Carga normal del listado o búsqueda por el dato ingresado.
+      // ACT: Consultar el servicio según exista o no un término.
       const resultado = textoBusqueda
-        ? await buscarMascotas(textoBusqueda)
-        : await consultarMascotas();
+        ? await buscarMascotasAdministracion(textoBusqueda)
+        : await consultarMascotasAdministracion();
 
-      const listaResultado = Array.isArray(resultado)
-        ? resultado
-        : [];
-
-      setMascotas(listaResultado);
-
-      // E1 — Mascota no encontrada.
-      // Una búsqueda sin coincidencias deja el listado vacío.
-      // El mensaje específico se presenta en el estado vacío del listado.
-      if (textoBusqueda && listaResultado.length === 0) {
-        setError('');
-      }
+      // ASSERT: Mantener un arreglo válido para renderizar los resultados.
+      setMascotas(Array.isArray(resultado) ? resultado : []);
     } catch (e) {
       logger.error('Error al cargar mascotas:', e);
 
       setError(
-        'No se pudieron cargar las mascotas. Intenta nuevamente.'
+        e?.message ||
+          'No se pudieron cargar las mascotas. Intenta nuevamente.'
       );
     } finally {
       setCargando(false);
     }
   }, []);
 
-  useEffect(() => {
-    cargarPerfil();
-    cargarMascotas('');
-  }, [cargarPerfil, cargarMascotas]);
+useEffect(() => {
+  let cancelado = false;
+
+  const inicializarPantalla = async () => {
+    if (cancelado) return;
+
+    await Promise.all([
+      cargarPerfil(),
+      cargarMascotas(''),
+    ]);
+  };
+
+  const tareaInicial = Promise.resolve().then(() => {
+    if (!cancelado) {
+      return inicializarPantalla();
+    }
+
+    return undefined;
+  });
+
+  return () => {
+    cancelado = true;
+    void tareaInicial;
+  };
+}, [cargarPerfil, cargarMascotas]);
 
   const mascotasFiltradas = useMemo(() => {
-    if (filtroActivo === 'Todas') return mascotas;
-
-    const estadoBuscado =
-      filtroActivo === 'Activas' ? 'Activa' : 'Inactiva';
+    if (filtroActivo === 'Todas') {
+      return mascotas;
+    }
 
     return mascotas.filter(
-      (mascota) => obtenerEstado(mascota) === estadoBuscado
+      (mascota) => obtenerEstado(mascota) === filtroActivo
     );
   }, [mascotas, filtroActivo]);
 
-  // E2 — Búsqueda sin datos.
-  // No se ejecuta una búsqueda vacía: se solicita ingresar un valor.
   const ejecutarBusqueda = () => {
-    const textoBusqueda = String(busqueda || '').trim();
+    const termino = String(busqueda ?? '').trim();
 
-    if (!textoBusqueda) {
+    if (!termino) {
       Alert.alert(
         'Dato requerido',
         'Ingresa un dato para realizar la búsqueda de la mascota.'
@@ -214,7 +218,7 @@ export default function GestionMascotas() {
       return;
     }
 
-    cargarMascotas(textoBusqueda);
+    cargarMascotas(termino);
   };
 
   const limpiarBusqueda = () => {
@@ -232,9 +236,11 @@ export default function GestionMascotas() {
         mascota.numero_historia
       );
 
-      if (detalle) setMascotaSeleccionada(detalle);
+      if (detalle) {
+        setMascotaSeleccionada(detalle);
+      }
     } catch (e) {
-      logger.error('Error al consultar detalle:', e.message);
+      logger.error('Error al consultar detalle:', e);
       Alert.alert(
         'Error',
         'No se pudo cargar toda la información de la mascota.'
@@ -250,16 +256,12 @@ export default function GestionMascotas() {
   };
 
   const solicitarCambioEstado = (mascota) => {
-    const accion =
-      obtenerEstado(mascota) === 'Activa' ? 'desactivar' : 'activar';
-
-    setAccionEstado(accion);
     setMascotaPorDesactivar(mascota);
     setMotivoDesactivacion('');
     setModalDesactivacionVisible(true);
   };
 
-  const cancelarDesactivacion = () => {
+  const cancelarCambioEstado = () => {
     if (desactivando) return;
 
     setModalDesactivacionVisible(false);
@@ -267,13 +269,12 @@ export default function GestionMascotas() {
     setMotivoDesactivacion('');
   };
 
-  // Confirma la activación o desactivación.
-  // E3 — Si la actualización falla, se conserva el estado anterior
-  // en la interfaz y se muestra el modal de error.
   const confirmarCambioEstado = async () => {
-    const motivo = String(motivoDesactivacion || '').trim();
+    // ARRANGE: Validar los datos antes de solicitar el cambio.
+    const motivo = String(motivoDesactivacion ?? '').trim();
     const numeroHistoria = mascotaPorDesactivar?.numero_historia;
-    const accionRealizada = accionEstado;
+    const estadoActual = obtenerEstado(mascotaPorDesactivar);
+    const nuevoEstado = estadoActual === 'Activa' ? 'Inactivo' : 'Activo';
 
     if (!numeroHistoria) {
       Alert.alert(
@@ -283,7 +284,7 @@ export default function GestionMascotas() {
       return;
     }
 
-    if (accionRealizada === 'desactivar' && !motivo) {
+    if (nuevoEstado === 'Inactivo' && !motivo) {
       Alert.alert(
         'Motivo obligatorio',
         'Escribe el motivo de desactivación.'
@@ -291,109 +292,43 @@ export default function GestionMascotas() {
       return;
     }
 
-    // Guardamos el estado de la interfaz antes de la operación.
     const listaAnterior = mascotas;
     const seleccionAnterior = mascotaSeleccionada;
 
     try {
       setDesactivando(true);
 
-      if (accionRealizada === 'desactivar') {
-        // Se conserva la función DAO original para desactivar.
-        await desactivarMascota(numeroHistoria, motivo);
-      } else {
-        // Activación: se comprueba que Supabase haya actualizado
-        // el registro y que no haya ocurrido un error.
-        const {
-          data: mascotaActualizada,
-          error: errorActivacion,
-        } = await supabase
-          .from('mascotas')
-          .update({
-            estado: 'Activo',
-            motivo_desactivacion: null,
-          })
-          .eq('numero_historia', numeroHistoria)
-          .select('numero_historia')
-          .maybeSingle();
+      // ACT: Delegar el cambio de estado al servicio y al DAO.
+      const resultado = await gestionarEstadoMascota({
+        numeroHistoria,
+        nuevoEstado,
+        motivo,
+        confirmado: true,
+      });
 
-        if (errorActivacion) {
-          throw errorActivacion;
-        }
-
-        if (!mascotaActualizada) {
-          throw new Error('No se actualizó el registro.');
-        }
+      if (!resultado?.ok) {
+        throw new Error(
+          resultado?.mensaje ||
+            'No se pudo actualizar el estado de la mascota.'
+        );
       }
 
-      // La actualización principal fue confirmada.
-      // Cerramos el modal de confirmación.
+      // ASSERT: Mostrar el éxito solo si el servicio confirma el cambio.
       setModalDesactivacionVisible(false);
       setMascotaPorDesactivar(null);
       setMotivoDesactivacion('');
-
-      // Recargamos el detalle sin confundir un fallo de consulta
-      // posterior con un fallo de la actualización principal.
-      try {
-        const detalleActualizado =
-          await consultarMascotaPorId(numeroHistoria);
-
-        if (detalleActualizado) {
-          setMascotaSeleccionada(detalleActualizado);
-        } else if (seleccionAnterior) {
-          setMascotaSeleccionada({
-            ...seleccionAnterior,
-            estado:
-              accionRealizada === 'activar' ? 'Activo' : 'Inactivo',
-            motivo_desactivacion:
-              accionRealizada === 'activar' ? null : motivo,
-          });
-        }
-      } catch (errorDetalle) {
-        logger.error(
-          'No se pudo recargar el detalle de la mascota:',
-          errorDetalle
-        );
-
-        // La actualización ya tuvo éxito; reflejamos ese resultado
-        // aunque falle la consulta secundaria del detalle.
-        if (seleccionAnterior) {
-          setMascotaSeleccionada({
-            ...seleccionAnterior,
-            estado:
-              accionRealizada === 'activar' ? 'Activo' : 'Inactivo',
-            motivo_desactivacion:
-              accionRealizada === 'activar' ? null : motivo,
-          });
-        }
-      }
-
-      // Recargamos el listado. Si falla esta consulta secundaria,
-      // no presentamos la actualización como una operación fallida.
-      try {
-        await cargarMascotas(busqueda);
-      } catch (errorLista) {
-        logger.error(
-          'No se pudo recargar el listado de mascotas:',
-          errorLista
-        );
-      }
+      setVista('lista');
+      setMascotaSeleccionada(null);
 
       setResultadoExitoso(true);
-      setMensajeResultado(
-        accionRealizada === 'desactivar'
-          ? 'La mascota fue desactivada correctamente.'
-          : 'La mascota fue activada correctamente.'
-      );
+      setMensajeResultado(resultado.mensaje);
       setModalResultadoVisible(true);
-    } catch (e) {
-      logger.error(
-        'Error al cambiar el estado de la mascota:',
-        e
-      );
 
-      // E3 — Restauramos los datos que tenía la interfaz antes
-      // de la operación. No mostramos mensajes técnicos de Supabase.
+      await cargarMascotas(busqueda);
+    } catch (e) {
+      logger.error('Error al cambiar el estado de la mascota:', e);
+
+      // ASSERT: No presentar el cambio como exitoso si hubo un error.
       setMascotas(listaAnterior);
 
       if (seleccionAnterior) {
@@ -401,7 +336,6 @@ export default function GestionMascotas() {
       }
 
       setModalDesactivacionVisible(false);
-
       setResultadoExitoso(false);
       setMensajeResultado(
         'No se pudo actualizar el estado de la mascota. El estado anterior se mantiene.'
@@ -411,45 +345,26 @@ export default function GestionMascotas() {
       setDesactivando(false);
     }
   };
-/**
- * RF07: Cerrar sesión.
- * La confirmación se realiza únicamente en MenuLateralDerecho.
- * Esta función solo ejecuta el cierre cuando el usuario confirma.
- */
-const cerrarSesion = async () => {
-  try {
-    const { error: errorSesion } = await supabase.auth.signOut();
 
-    if (errorSesion) {
-      throw errorSesion;
+  const cerrarSesion = async () => {
+    try {
+      const { error: errorSesion } = await supabase.auth.signOut();
+
+      if (errorSesion) throw errorSesion;
+
+      setMenuAbierto(false);
+      router.replace('/');
+    } catch (e) {
+      logger.error('Error al cerrar sesión:', e);
+      Alert.alert('Error', 'No se pudo cerrar la sesión.');
     }
+  };
 
-    // Cerrar el menú lateral.
-    setMenuAbierto(false);
-
-    // Volver a la pantalla de inicio de sesión.
-    router.replace('/');
-  } catch (error) {
-    logger.error('Error al cerrar sesión:', error);
-
-    // El menú lateral se encarga de mostrar el error.
-    throw error;
-  }
-};
-
-  const volverAdministracion = () =>
-    router.replace('/administracion');
-
-  const mascotaActiva = mascotaSeleccionada
-    ? obtenerEstado(mascotaSeleccionada) === 'Activa'
-    : false;
+  const volverAdministracion = () => router.replace('/administracion');
 
   return (
     <SafeAreaView style={styles.contenedor}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor={C.blanco}
-      />
+      <StatusBar barStyle="dark-content" backgroundColor={C.blanco} />
 
       <EncabezadoPetCare
         nombreUsuario={nombreUsuario}
@@ -465,9 +380,7 @@ const cerrarSesion = async () => {
           >
             Inicio
           </Text>
-
           <Text style={styles.separador}> / </Text>
-
           <Text
             style={styles.enlaceMiga}
             onPress={volverAdministracion}
@@ -478,9 +391,7 @@ const cerrarSesion = async () => {
           {vista === 'detalle' && (
             <>
               <Text style={styles.separador}> / </Text>
-              <Text style={styles.migaActual}>
-                Ficha de la mascota
-              </Text>
+              <Text style={styles.migaActual}>Ficha de la mascota</Text>
             </>
           )}
         </View>
@@ -496,9 +407,7 @@ const cerrarSesion = async () => {
               </TouchableOpacity>
 
               <View style={styles.bloqueTitulo}>
-                <Text style={styles.titulo}>
-                  Gestión de mascotas
-                </Text>
+                <Text style={styles.titulo}>Gestión de mascotas</Text>
                 <Text style={styles.subtitulo}>
                   Administra los registros de las mascotas de la veterinaria.
                 </Text>
@@ -567,24 +476,15 @@ const cerrarSesion = async () => {
                   : 'mascotas registradas'}
               </Text>
 
-              <TouchableOpacity
-                onPress={() => cargarMascotas(busqueda)}
-              >
-                <Text style={styles.enlaceActualizar}>
-                  ↻ Actualizar
-                </Text>
+              <TouchableOpacity onPress={() => cargarMascotas(busqueda)}>
+                <Text style={styles.enlaceActualizar}>↻ Actualizar</Text>
               </TouchableOpacity>
             </View>
 
             {cargando && mascotas.length === 0 ? (
               <View style={styles.estadoCarga}>
-                <ActivityIndicator
-                  size="large"
-                  color={C.primario}
-                />
-                <Text style={styles.textoEstado}>
-                  Cargando mascotas...
-                </Text>
+                <ActivityIndicator size="large" color={C.primario} />
+                <Text style={styles.textoEstado}>Cargando mascotas...</Text>
               </View>
             ) : error && mascotas.length === 0 ? (
               <View style={styles.estadoVacio}>
@@ -592,14 +492,11 @@ const cerrarSesion = async () => {
                   No se pudo cargar la información
                 </Text>
                 <Text style={styles.textoEstado}>{error}</Text>
-
                 <TouchableOpacity
                   style={styles.botonReintentar}
                   onPress={() => cargarMascotas(busqueda)}
                 >
-                  <Text style={styles.textoBotonBlanco}>
-                    Reintentar
-                  </Text>
+                  <Text style={styles.textoBotonBlanco}>Reintentar</Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -610,14 +507,11 @@ const cerrarSesion = async () => {
                 {mascotasFiltradas.length === 0 ? (
                   <View style={styles.estadoVacio}>
                     <Text style={styles.iconoVacio}>🐾</Text>
-
-                    {/* E1 — Mensaje específico para una búsqueda sin coincidencias. */}
                     <Text style={styles.tituloEstado}>
                       {busqueda.trim()
                         ? 'No se encontraron mascotas'
                         : 'No hay mascotas para mostrar'}
                     </Text>
-
                     <Text style={styles.textoEstado}>
                       {busqueda.trim()
                         ? 'No se encontraron mascotas que coincidan con tu búsqueda. Verifica el dato ingresado e inténtalo nuevamente.'
@@ -642,19 +536,11 @@ const cerrarSesion = async () => {
 
                           <View style={styles.datosTarjeta}>
                             <Text style={styles.codigo}>
-                              {mascota.nombre || 'Mascota sin nombre'}
+                              Código: {mascota.numero_historia || 'No registrado'}
                             </Text>
-
-                            <Text style={styles.codigoSecundario}>
-                              Historia clínica:{' '}
-                              {mascota.numero_historia || 'No registrada'}
-                            </Text>
-
                             <Text style={styles.tipoAnimal}>
-                              {mascota.especie ||
-                                'Tipo de animal no registrado'}
+                              {mascota.especie || 'Tipo de animal no registrado'}
                             </Text>
-
                             <Text style={styles.propietario}>
                               Propietario: {obtenerPropietario(mascota)}
                             </Text>
@@ -665,21 +551,16 @@ const cerrarSesion = async () => {
                                   styles.puntoEstado,
                                   {
                                     backgroundColor:
-                                      estado === 'Activa'
-                                        ? C.verde
-                                        : C.rojo,
+                                      estado === 'Activa' ? C.verde : C.rojo,
                                   },
                                 ]}
                               />
-
                               <Text
                                 style={[
                                   styles.textoEstadoTarjeta,
                                   {
                                     color:
-                                      estado === 'Activa'
-                                        ? C.verde
-                                        : C.rojo,
+                                      estado === 'Activa' ? C.verde : C.rojo,
                                   },
                                 ]}
                               >
@@ -718,9 +599,7 @@ const cerrarSesion = async () => {
               </TouchableOpacity>
 
               <View style={styles.bloqueTitulo}>
-                <Text style={styles.titulo}>
-                  Ficha de la mascota
-                </Text>
+                <Text style={styles.titulo}>Ficha de la mascota</Text>
                 <Text style={styles.subtitulo}>
                   Información del registro seleccionado.
                 </Text>
@@ -729,10 +608,7 @@ const cerrarSesion = async () => {
 
             {cargandoDetalle ? (
               <View style={styles.estadoCarga}>
-                <ActivityIndicator
-                  size="large"
-                  color={C.primario}
-                />
+                <ActivityIndicator size="large" color={C.primario} />
                 <Text style={styles.textoEstado}>
                   Cargando información...
                 </Text>
@@ -750,76 +626,50 @@ const cerrarSesion = async () => {
                   <Text style={styles.nombreFicha}>
                     {mascotaSeleccionada.nombre || 'Mascota sin nombre'}
                   </Text>
-
                   <Text style={styles.codigoFicha}>
-                    Historia clínica:{' '}
-                    {mascotaSeleccionada.numero_historia ||
-                      'No registrada'}
+                    Código: {mascotaSeleccionada.numero_historia || 'No registrado'}
                   </Text>
 
                   <View style={styles.separadorFicha} />
 
-                  <Text style={styles.tituloSeccion}>
-                    Datos de la mascota
-                  </Text>
-
-                  <FilaDato
-                    etiqueta="Nombre"
-                    valor={mascotaSeleccionada.nombre}
-                  />
+                  <Text style={styles.tituloSeccion}>Datos de la mascota</Text>
+                  <FilaDato etiqueta="Nombre" valor={mascotaSeleccionada.nombre} />
                   <FilaDato
                     etiqueta="Historia clínica"
                     valor={mascotaSeleccionada.numero_historia}
                   />
-                  <FilaDato
-                    etiqueta="Especie"
-                    valor={mascotaSeleccionada.especie}
-                  />
-                  <FilaDato
-                    etiqueta="Raza"
-                    valor={mascotaSeleccionada.raza}
-                  />
-                  <FilaDato
-                    etiqueta="Sexo"
-                    valor={mascotaSeleccionada.sexo}
-                  />
-                  <FilaDato
-                    etiqueta="Color"
-                    valor={mascotaSeleccionada.color}
-                  />
+                  <FilaDato etiqueta="Especie" valor={mascotaSeleccionada.especie} />
+                  <FilaDato etiqueta="Raza" valor={mascotaSeleccionada.raza} />
+                  <FilaDato etiqueta="Sexo" valor={mascotaSeleccionada.sexo} />
+                  <FilaDato etiqueta="Color" valor={mascotaSeleccionada.color} />
                   <FilaDato
                     etiqueta="Fecha de nacimiento"
-                    valor={formatearFecha(
-                      mascotaSeleccionada.fecha_nacimiento
-                    )}
+                    valor={formatearFecha(mascotaSeleccionada.fecha_nacimiento)}
                   />
                   <FilaDato
                     etiqueta="Fecha de registro"
-                    valor={formatearFecha(
-                      mascotaSeleccionada.fecha_registro
-                    )}
+                    valor={formatearFecha(mascotaSeleccionada.fecha_registro)}
                   />
 
                   <View style={styles.separadorFicha} />
 
-                  <Text style={styles.tituloSeccion}>
-                    Propietario
-                  </Text>
-
+                  <Text style={styles.tituloSeccion}>Propietario</Text>
                   <FilaDato
                     etiqueta="Nombre"
                     valor={obtenerPropietario(mascotaSeleccionada)}
                   />
 
                   <View style={styles.filaFichaEstado}>
-                    <Text style={styles.etiquetaDato}>
-                      Estado del registro
-                    </Text>
-
+                    <Text style={styles.etiquetaDato}>Estado del registro</Text>
                     <Text
                       style={[
                         styles.valorEstadoFicha,
-                        { color: mascotaActiva ? C.verde : C.rojo },
+                        {
+                          color:
+                            obtenerEstado(mascotaSeleccionada) === 'Activa'
+                              ? C.verde
+                              : C.rojo,
+                        },
                       ]}
                     >
                       {obtenerEstado(mascotaSeleccionada)}
@@ -834,26 +684,21 @@ const cerrarSesion = async () => {
                   ) : null}
 
                   <TouchableOpacity
-                    style={[
-                      styles.botonEstado,
-                      mascotaActiva
+                    style={
+                      obtenerEstado(mascotaSeleccionada) === 'Activa'
                         ? styles.botonDesactivar
-                        : styles.botonActivar,
-                    ]}
-                    onPress={() =>
-                      solicitarCambioEstado(mascotaSeleccionada)
+                        : styles.botonActivar
                     }
-                    disabled={desactivando}
+                    onPress={() => solicitarCambioEstado(mascotaSeleccionada)}
                   >
                     <Text
-                      style={[
-                        styles.textoBotonEstado,
-                        mascotaActiva
+                      style={
+                        obtenerEstado(mascotaSeleccionada) === 'Activa'
                           ? styles.textoBotonDesactivar
-                          : styles.textoBotonActivar,
-                      ]}
+                          : styles.textoBotonActivar
+                      }
                     >
-                      {mascotaActiva
+                      {obtenerEstado(mascotaSeleccionada) === 'Activa'
                         ? 'Desactivar mascota'
                         : 'Activar mascota'}
                     </Text>
@@ -865,14 +710,11 @@ const cerrarSesion = async () => {
                 <Text style={styles.tituloEstado}>
                   No se encontró la mascota
                 </Text>
-
                 <TouchableOpacity
                   style={styles.botonReintentar}
                   onPress={volverAlListado}
                 >
-                  <Text style={styles.textoBotonBlanco}>
-                    Volver al listado
-                  </Text>
+                  <Text style={styles.textoBotonBlanco}>Volver al listado</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -880,90 +722,65 @@ const cerrarSesion = async () => {
         )}
       </View>
 
-      {/* Modal original para confirmar la activación o desactivación. */}
       <Modal
         visible={modalDesactivacionVisible}
         transparent
         animationType="fade"
-        onRequestClose={cancelarDesactivacion}
+        onRequestClose={cancelarCambioEstado}
       >
         <View style={styles.modalFondo}>
           <View style={styles.modalCaja}>
-            <View
-              style={[
-                styles.modalIcono,
-                accionEstado === 'activar' && styles.modalIconoActivar,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.modalIconoTexto,
-                  accionEstado === 'activar' &&
-                    styles.modalIconoTextoActivar,
-                ]}
-              >
-                {accionEstado === 'desactivar' ? '!' : '✓'}
-              </Text>
+            <View style={styles.modalIcono}>
+              <Text style={styles.modalIconoTexto}>!</Text>
             </View>
 
             <Text style={styles.modalTitulo}>
-              {accionEstado === 'desactivar'
+              {obtenerEstado(mascotaPorDesactivar) === 'Activa'
                 ? 'Desactivar mascota'
                 : 'Activar mascota'}
             </Text>
 
             <Text style={styles.modalDescripcion}>
-              {accionEstado === 'desactivar'
-                ? `¿Confirmas que deseas desactivar a ${
-                    mascotaPorDesactivar?.nombre || 'esta mascota'
-                  }? El registro se conservará y podrás activarlo nuevamente.`
-                : `¿Confirmas que deseas activar nuevamente a ${
-                    mascotaPorDesactivar?.nombre || 'esta mascota'
-                  }? La mascota volverá a figurar como activa.`}
+              {obtenerEstado(mascotaPorDesactivar) === 'Activa'
+                ? `¿Deseas desactivar el registro de ${mascotaPorDesactivar?.nombre || 'esta mascota'}?`
+                : `¿Deseas activar el registro de ${mascotaPorDesactivar?.nombre || 'esta mascota'}?`}
             </Text>
 
-            {accionEstado === 'desactivar' && (
+            {obtenerEstado(mascotaPorDesactivar) === 'Activa' && (
               <>
                 <Text style={styles.modalEtiqueta}>
                   Motivo de desactivación *
                 </Text>
-
                 <TextInput
                   style={styles.modalEntrada}
                   value={motivoDesactivacion}
                   onChangeText={setMotivoDesactivacion}
-                  placeholder="Indica brevemente el motivo..."
+                  placeholder="Escribe el motivo de desactivación..."
                   placeholderTextColor="#8997A5"
                   multiline
                   maxLength={500}
                   editable={!desactivando}
                   textAlignVertical="top"
                 />
-
                 <Text style={styles.modalAyuda}>
-                  El motivo quedará guardado en el registro de la mascota.
+                  Este motivo quedará guardado en el registro de la mascota.
                 </Text>
               </>
             )}
 
             <View style={styles.modalAcciones}>
               <TouchableOpacity
-                style={[
-                  styles.modalBoton,
-                  styles.modalBotonCancelar,
-                ]}
-                onPress={cancelarDesactivacion}
+                style={[styles.modalBoton, styles.modalBotonCancelar]}
+                onPress={cancelarCambioEstado}
                 disabled={desactivando}
               >
-                <Text style={styles.modalTextoCancelar}>
-                  Cancelar
-                </Text>
+                <Text style={styles.modalTextoCancelar}>Cancelar</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[
                   styles.modalBoton,
-                  accionEstado === 'desactivar'
+                  obtenerEstado(mascotaPorDesactivar) === 'Activa'
                     ? styles.modalBotonConfirmar
                     : styles.modalBotonActivar,
                   desactivando && styles.botonDeshabilitado,
@@ -974,11 +791,7 @@ const cerrarSesion = async () => {
                 {desactivando ? (
                   <ActivityIndicator color={C.blanco} />
                 ) : (
-                  <Text style={styles.modalTextoConfirmar}>
-                    {accionEstado === 'desactivar'
-                      ? 'Sí, desactivar'
-                      : 'Sí, activar'}
-                  </Text>
+                  <Text style={styles.modalTextoConfirmar}>Confirmar</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -986,7 +799,6 @@ const cerrarSesion = async () => {
         </View>
       </Modal>
 
-      {/* Modal original para informar el resultado de la operación. */}
       <Modal
         visible={modalResultadoVisible}
         transparent
@@ -998,17 +810,13 @@ const cerrarSesion = async () => {
             <View
               style={[
                 styles.modalIcono,
-                resultadoExitoso
-                  ? styles.modalIconoActivar
-                  : styles.modalIconoError,
+                resultadoExitoso ? styles.iconoResultadoExito : styles.iconoResultadoError,
               ]}
             >
               <Text
                 style={[
                   styles.modalIconoTexto,
-                  resultadoExitoso
-                    ? styles.modalIconoTextoActivar
-                    : styles.modalIconoTextoError,
+                  resultadoExitoso ? styles.textoResultadoExito : styles.textoResultadoError,
                 ]}
               >
                 {resultadoExitoso ? '✓' : '!'}
@@ -1016,27 +824,15 @@ const cerrarSesion = async () => {
             </View>
 
             <Text style={styles.modalTitulo}>
-              {resultadoExitoso
-                ? 'Operación completada'
-                : 'No se pudo completar'}
+              {resultadoExitoso ? 'Operación completada' : 'No se pudo completar'}
             </Text>
-
-            <Text style={styles.modalDescripcion}>
-              {mensajeResultado}
-            </Text>
+            <Text style={styles.modalDescripcion}>{mensajeResultado}</Text>
 
             <TouchableOpacity
-              style={[
-                styles.modalBoton,
-                styles.modalBotonResultado,
-                !resultadoExitoso && styles.modalBotonError,
-              ]}
+              style={[styles.modalBoton, styles.botonResultado]}
               onPress={() => setModalResultadoVisible(false)}
-              activeOpacity={0.8}
             >
-              <Text style={styles.modalTextoConfirmar}>
-                Entendido
-              </Text>
+              <Text style={styles.modalTextoConfirmar}>Aceptar</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1070,34 +866,17 @@ function FilaDato({ etiqueta, valor }) {
 }
 
 const styles = StyleSheet.create({
-  contenedor: {
-    flex: 1,
-    backgroundColor: C.fondo,
-  },
-  contenido: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
+  contenedor: { flex: 1, backgroundColor: C.fondo },
+  contenido: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
   migas: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
     marginBottom: 16,
   },
-  enlaceMiga: {
-    color: C.primario,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  separador: {
-    color: C.secundario,
-    fontSize: 13,
-  },
-  migaActual: {
-    color: C.secundario,
-    fontSize: 13,
-  },
+  enlaceMiga: { color: C.primario, fontSize: 13, fontWeight: '600' },
+  separador: { color: C.secundario, fontSize: 13 },
+  migaActual: { color: C.secundario, fontSize: 13 },
   encabezadoPagina: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1126,14 +905,8 @@ const styles = StyleSheet.create({
     lineHeight: 38,
     marginTop: -3,
   },
-  bloqueTitulo: {
-    flex: 1,
-  },
-  titulo: {
-    color: C.texto,
-    fontSize: 23,
-    fontWeight: '800',
-  },
+  bloqueTitulo: { flex: 1 },
+  titulo: { color: C.texto, fontSize: 23, fontWeight: '800' },
   subtitulo: {
     color: C.secundario,
     fontSize: 13,
@@ -1152,11 +925,7 @@ const styles = StyleSheet.create({
     paddingRight: 5,
     marginBottom: 12,
   },
-  iconoBusqueda: {
-    color: C.secundario,
-    fontSize: 25,
-    marginRight: 8,
-  },
+  iconoBusqueda: { color: C.secundario, fontSize: 25, marginRight: 8 },
   entradaBusqueda: {
     flex: 1,
     minWidth: 0,
@@ -1164,22 +933,14 @@ const styles = StyleSheet.create({
     color: C.texto,
     fontSize: 13,
   },
-  limpiarBusqueda: {
-    color: C.secundario,
-    fontSize: 23,
-    paddingHorizontal: 6,
-  },
+  limpiarBusqueda: { color: C.secundario, fontSize: 23, paddingHorizontal: 6 },
   botonBuscar: {
     backgroundColor: C.primario,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 11,
   },
-  textoBotonBuscar: {
-    color: C.blanco,
-    fontWeight: '700',
-    fontSize: 12,
-  },
+  textoBotonBuscar: { color: C.blanco, fontWeight: '700', fontSize: 12 },
   filtros: {
     flexDirection: 'row',
     gap: 8,
@@ -1200,36 +961,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.borde,
   },
-  textoFiltro: {
-    color: C.secundario,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  textoFiltroSeleccionado: {
-    color: C.primario,
-    fontWeight: '800',
-  },
+  textoFiltro: { color: C.secundario, fontSize: 12, fontWeight: '600' },
+  textoFiltroSeleccionado: { color: C.primario, fontWeight: '800' },
   resumen: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  textoResumen: {
-    color: C.secundario,
-    fontSize: 12,
-  },
-  enlaceActualizar: {
-    color: C.primario,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  lista: {
-    flex: 1,
-  },
-  contenidoLista: {
-    paddingBottom: 24,
-  },
+  textoResumen: { color: C.secundario, fontSize: 12 },
+  enlaceActualizar: { color: C.primario, fontSize: 12, fontWeight: '700' },
+  lista: { flex: 1 },
+  contenidoLista: { paddingBottom: 24 },
   tarjeta: {
     width: '100%',
     backgroundColor: C.blanco,
@@ -1252,49 +995,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconoAvatar: {
-    fontSize: 24,
-  },
-  datosTarjeta: {
-    flex: 1,
-    minWidth: 0,
-  },
-  codigo: {
-    color: C.texto,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  codigoSecundario: {
-    color: C.secundario,
-    fontSize: 11,
-    marginTop: 3,
-  },
+  iconoAvatar: { fontSize: 24 },
+  datosTarjeta: { flex: 1, minWidth: 0 },
+  codigo: { color: C.texto, fontSize: 15, fontWeight: '800' },
   tipoAnimal: {
     color: C.primario,
     fontSize: 13,
     fontWeight: '700',
     marginTop: 6,
   },
-  propietario: {
-    color: C.secundario,
-    fontSize: 13,
-    marginTop: 5,
-  },
+  propietario: { color: C.secundario, fontSize: 13, marginTop: 5 },
   filaEstado: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginTop: 9,
   },
-  puntoEstado: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  textoEstadoTarjeta: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  puntoEstado: { width: 7, height: 7, borderRadius: 4 },
+  textoEstadoTarjeta: { fontSize: 12, fontWeight: '700' },
   separadorTarjeta: {
     height: 1,
     backgroundColor: C.borde,
@@ -1308,15 +1026,8 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: 8,
   },
-  textoBotonDetalle: {
-    color: C.primario,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  flechaDetalle: {
-    color: C.primario,
-    fontSize: 21,
-  },
+  textoBotonDetalle: { color: C.primario, fontSize: 13, fontWeight: '800' },
+  flechaDetalle: { color: C.primario, fontSize: 21 },
   estadoCarga: {
     flex: 1,
     alignItems: 'center',
@@ -1339,10 +1050,7 @@ const styles = StyleSheet.create({
     padding: 24,
     marginTop: 4,
   },
-  iconoVacio: {
-    fontSize: 34,
-    marginBottom: 8,
-  },
+  iconoVacio: { fontSize: 34, marginBottom: 8 },
   tituloEstado: {
     color: C.texto,
     fontSize: 15,
@@ -1356,17 +1064,9 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     marginTop: 15,
   },
-  textoBotonBlanco: {
-    color: C.blanco,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  detalleContenedor: {
-    flex: 1,
-  },
-  contenidoDetalle: {
-    paddingBottom: 28,
-  },
+  textoBotonBlanco: { color: C.blanco, fontSize: 12, fontWeight: '700' },
+  detalleContenedor: { flex: 1 },
+  contenidoDetalle: { paddingBottom: 28 },
   ficha: {
     width: '100%',
     backgroundColor: C.blanco,
@@ -1384,9 +1084,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2F2EE',
     alignSelf: 'center',
   },
-  iconoFicha: {
-    fontSize: 32,
-  },
+  iconoFicha: { fontSize: 32 },
   nombreFicha: {
     color: C.texto,
     fontSize: 22,
@@ -1420,11 +1118,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#EEF2F1',
   },
-  etiquetaDato: {
-    flex: 1,
-    color: C.secundario,
-    fontSize: 13,
-  },
+  etiquetaDato: { flex: 1, color: C.secundario, fontSize: 13 },
   valorDato: {
     flex: 1,
     color: C.texto,
@@ -1438,35 +1132,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
   },
-  valorEstadoFicha: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  botonEstado: {
+  valorEstadoFicha: { fontSize: 13, fontWeight: '800' },
+  botonDesactivar: {
+    backgroundColor: C.rojoFondo,
     borderWidth: 1,
+    borderColor: '#F5C7C4',
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: 18,
   },
-  botonDesactivar: {
-    backgroundColor: C.rojoFondo,
-    borderColor: '#F5C7C4',
-  },
+  textoBotonDesactivar: { color: C.rojo, fontSize: 14, fontWeight: '800' },
   botonActivar: {
     backgroundColor: C.verdeFondo,
-    borderColor: '#B9E2C5',
+    borderWidth: 1,
+    borderColor: '#B7E2C4',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 18,
   },
-  textoBotonEstado: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  textoBotonDesactivar: {
-    color: C.rojo,
-  },
-  textoBotonActivar: {
-    color: C.verde,
-  },
+  textoBotonActivar: { color: C.verde, fontSize: 14, fontWeight: '800' },
   modalFondo: {
     flex: 1,
     backgroundColor: 'rgba(20, 35, 40, 0.48)',
@@ -1491,17 +1177,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 12,
   },
-  modalIconoTexto: {
-    color: C.rojo,
-    fontSize: 26,
-    fontWeight: '800',
-  },
-  modalIconoActivar: {
-    backgroundColor: C.verdeFondo,
-  },
-  modalIconoTextoActivar: {
-    color: C.verde,
-  },
+  modalIconoTexto: { color: C.rojo, fontSize: 26, fontWeight: '800' },
   modalTitulo: {
     color: C.texto,
     fontSize: 20,
@@ -1539,11 +1215,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginTop: 7,
   },
-  modalAcciones: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 22,
-  },
+  modalAcciones: { flexDirection: 'row', gap: 10, marginTop: 22 },
   modalBoton: {
     flex: 1,
     minHeight: 46,
@@ -1556,38 +1228,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.borde,
   },
-  modalBotonConfirmar: {
-    backgroundColor: C.rojo,
-  },
-  modalBotonActivar: {
-    backgroundColor: C.verde,
-  },
-  modalTextoCancelar: {
-    color: C.texto,
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  modalBotonConfirmar: { backgroundColor: C.rojo },
+  modalBotonActivar: { backgroundColor: C.verde },
+  modalTextoCancelar: { color: C.texto, fontSize: 14, fontWeight: '700' },
   modalTextoConfirmar: {
     color: C.blanco,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
+    textAlign: 'center',
   },
-  botonDeshabilitado: {
-    opacity: 0.7,
-  },
-
-  // Estilos originales del modal de resultado.
-  modalIconoError: {
-    backgroundColor: C.rojoFondo,
-  },
-  modalIconoTextoError: {
-    color: C.rojo,
-  },
-  modalBotonResultado: {
-    backgroundColor: C.primario,
-    marginTop: 4,
-  },
-  modalBotonError: {
-    backgroundColor: C.rojo,
-  },
+  botonDeshabilitado: { opacity: 0.7 },
+  iconoResultadoExito: { backgroundColor: C.verdeFondo },
+  iconoResultadoError: { backgroundColor: C.rojoFondo },
+  textoResultadoExito: { color: C.verde },
+  textoResultadoError: { color: C.rojo },
+  botonResultado: { backgroundColor: C.primario, marginTop: 4 },
 });

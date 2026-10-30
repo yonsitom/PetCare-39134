@@ -12,6 +12,7 @@ function normalizarCorreo(correo) {
  * Se utiliza desde el DAO y desde las pruebas unitarias.
  */
 export function validarDatosPropietario(datos = {}) {
+  datos = datos && typeof datos === 'object' ? datos : {};
   const errores = {};
 
   const nombre = limpiarTexto(datos.nombre);
