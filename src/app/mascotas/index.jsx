@@ -21,6 +21,7 @@ import { supabase } from '../../services/supabase';
 import { consultarMascotas } from '../../dao/mascotaDAO';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
+import { logger } from '../../utils/logger';
 
 // Colores compartidos con las demás pantallas de PetCare.
 const C = {
@@ -84,7 +85,7 @@ export default function ListaMascotasScreen() {
           .single();
 
         if (errorPerfil) {
-          console.error(
+          logger.error(
             'Error al consultar el perfil:',
             errorPerfil.message
           );
@@ -96,7 +97,7 @@ export default function ListaMascotasScreen() {
           setRolUsuario(data.rol || '');
         }
       } catch (e) {
-        console.error('Error al cargar el perfil:', e);
+        logger.error('Error al cargar el perfil:', e);
       }
     }
 
@@ -116,7 +117,7 @@ export default function ListaMascotasScreen() {
 
       setMascotas(Array.isArray(resultado) ? resultado : []);
     } catch (e) {
-      console.error('Error al cargar mascotas:', e);
+      logger.error('Error al cargar mascotas:', e);
       setError('No se pudieron cargar las mascotas.');
     } finally {
       setCargando(false);
@@ -196,7 +197,7 @@ export default function ListaMascotasScreen() {
       setMenuAbierto(false);
       router.replace('/');
     } catch (e) {
-      console.error('Error al cerrar sesión:', e);
+      logger.error('Error al cerrar sesión:', e);
 
       Alert.alert(
         'Error',

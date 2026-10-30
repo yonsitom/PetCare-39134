@@ -15,6 +15,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../services/supabase';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
+import { logger } from '../../utils/logger';
 
 // Colores utilizados en la pantalla.
 const C = {
@@ -108,7 +109,7 @@ export default function FichaMascotaPropietario() {
 
       setMascota(datosMascota);
     } catch (error) {
-      console.error('Error al cargar la ficha de mascota:', error);
+      logger.error('Error al cargar la ficha de mascota:', error);
 
       Alert.alert(
         'Error',

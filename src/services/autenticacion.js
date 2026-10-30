@@ -1,5 +1,6 @@
 
 import { supabase } from './supabase';
+import { logger } from '../utils/logger';
 
 const MENSAJES = {
   campos: 'Complete todos los campos para continuar.',
@@ -91,7 +92,7 @@ export async function cambiarContrasena({
       throw new Error(MENSAJES.actualIncorrecta);
     }
 
-    console.error(
+    logger.error(
       'Error verificando la contraseña actual:',
       errorVerificacion
     );
@@ -114,7 +115,7 @@ export async function cambiarContrasena({
   });
 
   if (errorActualizacion) {
-    console.error(
+    logger.error(
       'Error actualizando la contraseña:',
       errorActualizacion
     );

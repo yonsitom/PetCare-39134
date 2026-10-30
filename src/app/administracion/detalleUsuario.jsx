@@ -20,6 +20,7 @@ import { supabase } from '../../services/supabase';
 
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
+import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -170,7 +171,7 @@ export default function DetalleUsuario() {
         direccion: data.direccion || '',
       });
     } catch (error) {
-      console.error(
+      logger.error(
         'Error al cargar el detalle del usuario:',
         error
       );
@@ -320,7 +321,7 @@ export default function DetalleUsuario() {
         'Los datos del usuario se actualizaron correctamente.'
       );
     } catch (error) {
-      console.error(
+      logger.error(
         'Error al actualizar el usuario:',
         error
       );
@@ -393,7 +394,7 @@ export default function DetalleUsuario() {
           : 'La cuenta se desactivó correctamente.'
       );
     } catch (error) {
-      console.error(
+      logger.error(
         `Error al ${
           estaActivando ? 'activar' : 'desactivar'
         } la cuenta:`,

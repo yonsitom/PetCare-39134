@@ -28,6 +28,7 @@ import {
 
 import MenuLateralDerecho from '../components/layout/MenuLateralDerecho';
 import EncabezadoPetCare from '../components/layout/EncabezadoPetCare';
+import { logger } from '../utils/logger';
 
 const C = {
   primario: '#0D9488',
@@ -236,7 +237,7 @@ export default function InicioScreen() {
 
       return true;
     } catch (error) {
-      console.error('Error al verificar el acceso a PetCare:', error);
+      logger.error('Error al verificar el acceso a PetCare:', error);
 
       setNombre('');
       setRol('');
@@ -280,7 +281,7 @@ export default function InicioScreen() {
         ...resumen,
       }));
     } catch (error) {
-      console.error('RF08: error al cargar el resumen:', error);
+      logger.error('RF08: error al cargar el resumen:', error);
 
       setErrorIndicadores(
         error?.message ||
@@ -334,7 +335,7 @@ export default function InicioScreen() {
 
       setProximasCitas(citasFiltradas);
     } catch (error) {
-      console.error('Error al consultar las próximas citas:', error);
+      logger.error('Error al consultar las próximas citas:', error);
 
       setProximasCitas([]);
       setErrorCitas(
@@ -370,7 +371,7 @@ export default function InicioScreen() {
         activas: resultado.activas,
       }));
     } catch (error) {
-      console.error(
+      logger.error(
         'RF09: error al consultar atenciones activas:',
         error
       );

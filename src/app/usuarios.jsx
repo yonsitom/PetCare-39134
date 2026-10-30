@@ -18,6 +18,7 @@ import { supabase } from '../services/supabase';
 import { consultarUsuarios } from '../services/administracion/usuariosService';
 import EncabezadoPetCare from '../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../components/layout/MenuLateralDerecho';
+import { logger } from '../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -104,7 +105,7 @@ export default function GestionUsuarios() {
       const lista = await consultarUsuarios();
       setUsuarios(Array.isArray(lista) ? lista : []);
     } catch (e) {
-      console.error('Error al consultar usuarios:', e);
+      logger.error('Error al consultar usuarios:', e);
       setError('No se pudieron cargar los usuarios.');
     } finally {
       setCargando(false);
@@ -165,7 +166,7 @@ export default function GestionUsuarios() {
       setMenuAbierto(false);
       router.replace('/');
     } catch (errorCerrar) {
-      console.error('Error al cerrar sesión:', errorCerrar);
+      logger.error('Error al cerrar sesión:', errorCerrar);
 
       Alert.alert(
         'Error',

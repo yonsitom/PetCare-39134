@@ -23,6 +23,7 @@ const INDICADORES_VACIOS = {
 };
 
 import { Stack } from 'expo-router';
+import { logger } from '../../utils/logger';
 
 
 export default function AdministracionScreen() {
@@ -46,7 +47,7 @@ export default function AdministracionScreen() {
       .select(columnaEstado);
 
     if (error) {
-      console.error(`Error al consultar ${tabla}:`, error.message);
+      logger.error(`Error al consultar ${tabla}:`, error.message);
       throw error;
     }
 
@@ -91,7 +92,7 @@ export default function AdministracionScreen() {
             : anteriores.propietarios,
       }));
     } catch (error) {
-      console.error('Error al cargar los contadores:', error);
+      logger.error('Error al cargar los contadores:', error);
     } finally {
       setCargandoIndicadores(false);
     }
@@ -151,7 +152,7 @@ export default function AdministracionScreen() {
 
       cargarIndicadores();
     } catch (error) {
-      console.error('Error al validar el perfil:', error);
+      logger.error('Error al validar el perfil:', error);
       router.replace('/');
     }
   }, [cargarIndicadores]);
@@ -178,7 +179,7 @@ export default function AdministracionScreen() {
       router.replace('/');
     } catch (error) {
       Alert.alert('Error', 'No se pudo cerrar la sesión.');
-      console.error('Error al cerrar sesión:', error);
+      logger.error('Error al cerrar sesión:', error);
     }
   };
 

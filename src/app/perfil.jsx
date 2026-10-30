@@ -14,6 +14,7 @@ import PantallaEditarPerfil from '../components/perfil/PantallaEditarPerfil';
 import ModalCambiarContrasena from '../components/perfil/ModalCambiarContrasena';
 import EncabezadoPetCare from '../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../components/layout/MenuLateralDerecho';
+import { logger } from '../utils/logger';
 
 const C = {
   fondo: '#F4F8F7',
@@ -63,7 +64,7 @@ export default function PerfilScreen() {
         setEstadoCuenta(data.estado_cuenta || 'Activo');
       }
     } catch (error) {
-      console.error('Error al cargar datos del perfil:', error);
+      logger.error('Error al cargar datos del perfil:', error);
     }
   }, []);
 
@@ -145,7 +146,7 @@ export default function PerfilScreen() {
           'Tu contraseña se cambió correctamente.'
         );
       } catch (error) {
-        console.error('Error al cambiar la contraseña:', error);
+        logger.error('Error al cambiar la contraseña:', error);
 
         setErrorContrasena(
           error?.message ||

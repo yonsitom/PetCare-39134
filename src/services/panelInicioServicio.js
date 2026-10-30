@@ -1,5 +1,6 @@
 
 import { supabase } from './supabase';
+import { logger } from '../utils/logger';
 
 /**
  * SERVICIO DEL PANEL PRINCIPAL — PETCARE
@@ -83,7 +84,7 @@ export async function consultarResumenInicio() {
         .eq('eliminado', false),
     ]);
   } catch (error) {
-    console.error(
+    logger.error(
       'RF08/RF10: error al consultar el resumen del panel:',
       error
     );
@@ -105,7 +106,7 @@ export async function consultarResumenInicio() {
 
   // RF08: controlar errores de la consulta de atenciones.
   if (resultadoAtenciones?.error) {
-    console.error(
+    logger.error(
       'RF08: error al consultar las atenciones:',
       resultadoAtenciones.error
     );
@@ -115,7 +116,7 @@ export async function consultarResumenInicio() {
 
   // RF10: controlar errores de la consulta de actividades.
   if (resultadoActividades?.error) {
-    console.error(
+    logger.error(
       'RF10: error al consultar las actividades:',
       resultadoActividades.error
     );
@@ -241,7 +242,7 @@ export async function consultarIndicadoresInicio() {
         .eq('estado', 'Activa'),
     ]);
   } catch (error) {
-    console.error(
+    logger.error(
       'RF09/RF10: error de conexión al consultar los indicadores:',
       error
     );
@@ -255,7 +256,7 @@ export async function consultarIndicadoresInicio() {
 
   // RF09: la quinta consulta corresponde a las atenciones activas.
   if (consultas[4]?.error) {
-    console.error(
+    logger.error(
       'RF09: error al consultar las atenciones activas:',
       consultas[4].error
     );
@@ -273,7 +274,7 @@ export async function consultarIndicadoresInicio() {
   );
 
   if (resultadoConError) {
-    console.error(
+    logger.error(
       'RF10: error al consultar los indicadores de actividades:',
       resultadoConError.error
     );

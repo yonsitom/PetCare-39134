@@ -7,6 +7,7 @@
 
 import { supabase } from './supabase';
 import * as Linking from 'expo-linking';
+import { logger } from '../utils/logger';
 // RF03: validar el formato básico del correo electrónico.
 export function correoTieneFormatoValido(correo) {
   // ARRANGE: normalizar el valor ingresado.
@@ -190,7 +191,7 @@ export async function enviarEnlaceRecuperacion(correo) {
   try {
     // ACT: solicitar a Supabase que envíe el enlace.
     const urlRecuperacion = Linking.createURL('restablecerContrasena');
-    console.log('RF03 - URL de recuperación:', urlRecuperacion);
+    logger.info('RF03 - URL de recuperación:', urlRecuperacion);
     const { error } = await supabase.auth.resetPasswordForEmail(
       correoNormalizado,
       {
@@ -208,7 +209,7 @@ export async function enviarEnlaceRecuperacion(correo) {
       mensaje: 'Se envió el enlace de recuperación al correo electrónico.',
     };
   } catch (error) {
-    console.error('RF03 - Error al enviar recuperación:', error?.message || error);
+    logger.error('RF03 - Error al enviar recuperación:', error?.message || error);
     // ASSERT: no exponer detalles internos del proveedor.
     return {
       exito: false,

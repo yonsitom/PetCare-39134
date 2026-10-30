@@ -15,6 +15,7 @@ import {
 
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../../services/supabase';
+import { logger } from '../../utils/logger';
 
 
 const C = {
@@ -89,7 +90,7 @@ onCambiarContrasena,
       setPerfil(data);
       setCorreo(user.email || '');
     } catch (error) {
-      console.error('Error al consultar el perfil:', error);
+      logger.error('Error al consultar el perfil:', error);
       Alert.alert(
         'No se pudo cargar el perfil',
         'Verifica tu conexión e inténtalo nuevamente.'

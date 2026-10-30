@@ -21,6 +21,7 @@ import {
 } from '../../dao/propietarioDAO';
 
 import { supabase } from '../../services/supabase';
+import { logger } from '../../utils/logger';
 
 // ======================================================
 // COLORES DE LA PANTALLA
@@ -85,7 +86,7 @@ export default function FichaPropietario() {
         setRolUsuario(data.rol || 'Asistente');
       }
     } catch (e) {
-      console.log('Error al cargar el perfil:', e.message);
+      logger.info('Error al cargar el perfil:', e.message);
     }
   }, []);
 
@@ -113,7 +114,7 @@ export default function FichaPropietario() {
       setPropietario(datosPropietario);
       setMascotas(Array.isArray(datosMascotas) ? datosMascotas : []);
     } catch (e) {
-      console.error('Error al cargar la ficha del propietario:', e);
+      logger.error('Error al cargar la ficha del propietario:', e);
       setError(
         e?.message ||
           'No se pudo cargar la información del propietario.'
