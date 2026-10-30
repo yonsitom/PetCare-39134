@@ -1,64 +1,275 @@
 
-import { supabase } from '../supabase';
+/**
+ * PETCARE
+ * Servicio de Administración
+ *
+ * RF48: Consultar resumen general.
+ *
+ * Responsabilidad:
+ * Procesar los datos recibidos del DAO y construir
+ * el resumen general de usuarios, mascotas,
+ * propietarios, atenciones y actividades.
+ */
+
+import {
+  consultarConteosAdministracionDAO,
+} from '../../dao/administracion/indicadoresAdministracionDAO';
 import { logger } from '../../utils/logger';
 
-export async function consultarIndicadoresAdministracion() {
-  const [
-    usuariosTotal,
-    usuariosActivos,
-    usuariosInactivos,
-    mascotasTotal,
-    propietariosTotal,
-    atencionesTotal,
-    actividadesTotal,
-    cambiosTotal,
-  ] = await Promise.all([
-    supabase.from('perfiles').select('perfil_id', { count: 'exact', head: true }),
-    supabase.from('perfiles').select('perfil_id', { count: 'exact', head: true }).eq('estado_cuenta', 'Activo'),
-    supabase.from('perfiles').select('perfil_id', { count: 'exact', head: true }).eq('estado_cuenta', 'Inactivo'),
-    supabase.from('mascotas').select('numero_historia', { count: 'exact', head: true }),
-    supabase.from('propietarios').select('propietario_id', { count: 'exact', head: true }),
-    supabase.from('atenciones').select('atencion_id', { count: 'exact', head: true }),
-    supabase.from('actividades').select('*', { count: 'exact', head: true }),
-    supabase.from('historial_cambios').select('*', { count: 'exact', head: true }),
-  ]);
+// ------------------------------------------------------
+// CONFIGURACIÓN DE RF48
+// ------------------------------------------------------
 
-  const resultados = [
-    usuariosTotal,
-    usuariosActivos,
-    usuariosInactivos,
-    mascotasTotal,
-    propietariosTotal,
-    atencionesTotal,
-    actividadesTotal,
-    cambiosTotal,
-  ];
+const ESTADOS = {
+  usuarios: ['Activo', 'Inactivo'],
+  mascotas: ['Activo', 'Inactivo'],
+  propietarios: ['Activo', 'Inactivo'],
+  atenciones: ['Activa', 'Finalizada'],
+  actividades: [
+    'Pendiente',
+    'Completada',
+    'No realizada',
+  ],
+};
 
-  const error = resultados.find((resultado) => resultado.error);
+const TIPOS_ACTIVIDAD = {
+  Consulta: 'Consulta',
+  Medicacion: 'Medicación',
+  Vacunacion: 'Vacunación',
+  Ecografia: 'Ecografía',
+  Esterilizacion: 'Esterilización',
+  'Otro actividad': 'Otro',
+};
 
-  if (error) {
-    logger.error('Error consultando indicadores:', error.error);
-    throw error.error;
-  }
+// ------------------------------------------------------
+// FUNCIONES AUXILIARES
+// ------------------------------------------------------
+
+/**
+ * Crea un objeto de estados con cantidades iniciales en cero.
+ */
+function crearEstadosVacios(estados) {
+  return estados.reduce((resultado, estado) => {
+    resultado[estado] = 0;
+    return resultado;
+  }, {});
+}
+
+/**
+ * Cuenta los registros de una categoría por estado.
+ */
+function contarPorEstado(registros, estados, columnaEstado) {
+  const porEstado = crearEstadosVacios(estados);
+
+  registros.forEach((registro) => {
+    const estado = registro[columnaEstado];
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        porEstado,
+        estado
+      )
+    ) {
+      porEstado[estado] += 1;
+    }
+  });
 
   return {
-    usuarios: {
-      total: usuariosTotal.count ?? 0,
-      activos: usuariosActivos.count ?? 0,
-      inactivos: usuariosInactivos.count ?? 0,
-    },
-    mascotas: {
-      total: mascotasTotal.count ?? 0,
-      activos: mascotasTotal.count ?? 0,
-      inactivos: 0,
-    },
-    propietarios: {
-      total: propietariosTotal.count ?? 0,
-      activos: propietariosTotal.count ?? 0,
-      inactivos: 0,
-    },
-    atenciones: atencionesTotal.count ?? 0,
-    actividades: actividadesTotal.count ?? 0,
-    cambios: cambiosTotal.count ?? 0,
+    total: registros.length,
+    porEstado,
   };
+}
+
+/**
+ * Procesa una categoría independiente.
+ *
+ * Si la consulta falla, no inventa cantidades.
+ * Las demás categorías pueden continuar mostrándose.
+ */
+function procesarCategoria(
+  resultadoDAO,
+  estados,
+  columnaEstado,
+  nombreCategoria,
+  advertencias
+) {
+  if (
+    !resultadoDAO ||
+    resultadoDAO.error ||
+    !Array.isArray(resultadoDAO.data)
+  ) {
+    advertencias.push(nombreCategoria);
+
+    return {
+      disponible: false,
+      error:
+        resultadoDAO?.error?.message ||
+        'Información no disponible',
+    };
+  }
+
+  return contarPorEstado(
+    resultadoDAO.data,
+    estados,
+    columnaEstado
+  );
+}
+
+/**
+ * Cuenta las actividades por estado y por tipo.
+ */
+function contarActividades(registros) {
+  const porEstado = crearEstadosVacios(
+    ESTADOS.actividades
+  );
+
+  const porTipo = crearEstadosVacios(
+    Object.values(TIPOS_ACTIVIDAD)
+  );
+
+  registros.forEach((actividad) => {
+    // Conteo por estado.
+    if (
+      Object.prototype.hasOwnProperty.call(
+        porEstado,
+        actividad.estado
+      )
+    ) {
+      porEstado[actividad.estado] += 1;
+    }
+
+    // Conteo por tipo.
+    const tipoPresentacion =
+      TIPOS_ACTIVIDAD[actividad.tipo];
+
+    if (
+      tipoPresentacion &&
+      Object.prototype.hasOwnProperty.call(
+        porTipo,
+        tipoPresentacion
+      )
+    ) {
+      porTipo[tipoPresentacion] += 1;
+    }
+  });
+
+  return {
+    total: registros.length,
+    porEstado,
+    porTipo,
+  };
+}
+
+// ------------------------------------------------------
+// RF48 - CONSULTAR RESUMEN GENERAL
+// ------------------------------------------------------
+
+export async function consultarIndicadoresAdministracion() {
+  try {
+    const datosDAO =
+      await consultarConteosAdministracionDAO();
+
+    if (!datosDAO || typeof datosDAO !== 'object') {
+      throw new Error(
+        'No fue posible cargar el resumen general'
+      );
+    }
+
+    const advertencias = [];
+
+    // Usuarios.
+    const usuarios = procesarCategoria(
+      datosDAO.usuarios,
+      ESTADOS.usuarios,
+      'estado_cuenta',
+      'usuarios',
+      advertencias
+    );
+
+    // Mascotas.
+    const mascotas = procesarCategoria(
+      datosDAO.mascotas,
+      ESTADOS.mascotas,
+      'estado',
+      'mascotas',
+      advertencias
+    );
+
+    // Propietarios.
+    const propietarios = procesarCategoria(
+      datosDAO.propietarios,
+      ESTADOS.propietarios,
+      'estado',
+      'propietarios',
+      advertencias
+    );
+
+    // Atenciones.
+    const atenciones = procesarCategoria(
+      datosDAO.atenciones,
+      ESTADOS.atenciones,
+      'estado',
+      'atenciones',
+      advertencias
+    );
+
+    // Actividades.
+    let actividades;
+
+    if (
+      !datosDAO.actividades ||
+      datosDAO.actividades.error ||
+      !Array.isArray(datosDAO.actividades.data)
+    ) {
+      advertencias.push('actividades');
+
+      actividades = {
+        disponible: false,
+        error:
+          datosDAO.actividades?.error?.message ||
+          'Información no disponible',
+      };
+    } else {
+      actividades = contarActividades(
+        datosDAO.actividades.data
+      );
+    }
+
+    // Verificar que al menos una categoría esté disponible.
+    const categorias = [
+      usuarios,
+      mascotas,
+      propietarios,
+      atenciones,
+      actividades,
+    ];
+
+    const hayCategoriaDisponible = categorias.some(
+      (categoria) => categoria.disponible !== false
+    );
+
+    if (!hayCategoriaDisponible) {
+      throw new Error(
+        'No fue posible cargar el resumen general'
+      );
+    }
+
+    return {
+      usuarios,
+      mascotas,
+      propietarios,
+      atenciones,
+      actividades,
+      advertencias,
+    };
+  } catch (error) {
+    logger.error(
+      'Error al consultar el resumen general:',
+      error
+    );
+
+    throw new Error(
+      'No fue posible cargar el resumen general'
+    );
+  }
 }
