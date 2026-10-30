@@ -1,0 +1,34 @@
+digraph A {
+graph [rankdir=TB, nodesep=0.3, ranksep=0.45, fontname="Arial", pad=0.3, bgcolor="white"];
+node [shape=plaintext, fontname="Arial", fontsize=11];
+edge [color="#455A64", penwidth=1.4, arrowsize=0.8, fontname="Arial", fontsize=9];
+user [label=<<TABLE BORDER="0" CELLPADDING="6" BGCOLOR="#1565C0" STYLE="rounded"><TR><TD><FONT COLOR="white"><B>Usuario</B> (Administrador / Asistente)<BR/>Celular Android – APK</FONT></TD></TR></TABLE>>];
+vista [label=<<TABLE BORDER="1" COLOR="#E65100" CELLPADDING="5" CELLSPACING="0" BGCOLOR="#FFF3E0">
+<TR><TD COLSPAN="3" BGCOLOR="#E65100"><FONT COLOR="white"><B>VISTA</B>  (React Native + Expo Router)</FONT></TD></TR>
+<TR><TD ALIGN="LEFT"><B>src/app/</B><BR/><FONT POINT-SIZE="9">index.jsx · inicio.jsx · perfil.jsx<BR/>propietarios/ · mascotas/ · atenciones<BR/>detalleAtencion.jsx · actividades/<BR/>seguimientos/ · administracion/</FONT></TD>
+<TD ALIGN="LEFT"><B>src/components/</B><BR/><FONT POINT-SIZE="9">autenticacion · perfil · inicio<BR/>propietarios · mascotas · atenciones<BR/>actividades · seguimiento<BR/>administracion · layout · ui</FONT></TD>
+<TD ALIGN="LEFT"><B>src/styles/ · hooks/</B><BR/><FONT POINT-SIZE="9">estilos por módulo<BR/>use-theme · use-color-scheme</FONT></TD></TR></TABLE>>];
+ctrl [label=<<TABLE BORDER="1" COLOR="#2E7D32" CELLPADDING="5" CELLSPACING="0" BGCOLOR="#E8F5E9">
+<TR><TD COLSPAN="2" BGCOLOR="#2E7D32"><FONT COLOR="white"><B>CONTROLADOR</B>  (lógica de cada requerimiento)</FONT></TD></TR>
+<TR><TD ALIGN="LEFT"><B>src/controllers/</B><BR/><FONT POINT-SIZE="9">atencionesControlador.js<BR/>actividadesControlador.js</FONT></TD>
+<TD ALIGN="LEFT"><B>src/services/</B><BR/><FONT POINT-SIZE="9">iniciarSesionControlador.js · rolUsuarioControlador.js<BR/>autenticacionServicio.js · perfilServicio.js · sesionPersistenciaServicio.js<BR/>panelInicioServicio.js · actividadesServicio.js · administracion/<BR/>exportarPdfServicio.js · almacenamientoSeguro.js</FONT></TD></TR></TABLE>>];
+modelo [label=<<TABLE BORDER="1" COLOR="#6A1B9A" CELLPADDING="5" CELLSPACING="0" BGCOLOR="#F3E5F5">
+<TR><TD BGCOLOR="#6A1B9A"><FONT COLOR="white"><B>MODELO – DAO</B>  (único acceso a datos)</FONT></TD></TR>
+<TR><TD ALIGN="LEFT"><B>src/dao/</B><BR/><FONT POINT-SIZE="9">perfilDAO.js · propietarioDAO.js · mascotaDAO.js · atencionesDAO.js · actividadesDAO.js</FONT></TD></TR></TABLE>>];
+db [label=<<TABLE BORDER="0" CELLPADDING="6" BGCOLOR="#37474F"><TR><TD><FONT COLOR="white"><B>Supabase</B> (BaaS)<BR/>PostgreSQL · Auth · RLS · 23 tablas</FONT></TD></TR></TABLE>>];
+trans [label=<<TABLE BORDER="1" COLOR="#607D8B" STYLE="dashed" CELLPADDING="5" CELLSPACING="0" BGCOLOR="#ECEFF1">
+<TR><TD><B>TRANSVERSAL</B></TD></TR>
+<TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">src/utils/: logger.js<BR/>validacionesAutenticacion.js<BR/>validacionesPropietario.js<BR/>validacionesAtencion.js<BR/>src/constants/theme.ts</FONT></TD></TR></TABLE>>];
+tests [label=<<TABLE BORDER="1" COLOR="#607D8B" STYLE="dashed" CELLPADDING="5" CELLSPACING="0" BGCOLOR="#ECEFF1">
+<TR><TD><B>PRUEBAS (TDD)</B></TD></TR>
+<TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">src/tests/ (Jest)<BR/>20 suites · 100 pruebas<BR/>controladores, DAO, servicios<BR/>validaciones y librerías</FONT></TD></TR></TABLE>>];
+user -> vista [label="  toca / escribe"];
+vista -> ctrl [label="  envía la acción"];
+ctrl -> vista [style=dashed, label="  resultado / mensaje", constraint=false];
+ctrl -> modelo [label="  solicita datos"];
+modelo -> db [label="  supabase-js (HTTPS + JWT)"];
+{rank=same; ctrl; trans}
+{rank=same; modelo; tests}
+trans -> ctrl [style=dotted, arrowhead=none, color="#90A4AE"];
+tests -> modelo [style=dotted, arrowhead=none, color="#90A4AE"];
+}
