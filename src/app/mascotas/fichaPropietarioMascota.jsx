@@ -43,6 +43,7 @@ import { supabase } from '../../services/supabase';
 
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
+import { logger } from '../../utils/logger';
 
 // ======================================================
 // PALETA DE COLORES PETCARE
@@ -170,7 +171,7 @@ export default function FichaPropietarioMascotaScreen() {
           .single();
 
         if (errorPerfil) {
-          console.error(
+          logger.error(
             'Error al consultar el perfil:',
             errorPerfil.message
           );
@@ -186,7 +187,7 @@ export default function FichaPropietarioMascotaScreen() {
           setRolUsuario(data.rol || '');
         }
       } catch (err) {
-        console.error(
+        logger.error(
           'Error al cargar el perfil:',
           err
         );
@@ -246,7 +247,7 @@ export default function FichaPropietarioMascotaScreen() {
 
       setPropietario(data);
     } catch (err) {
-      console.error(
+      logger.error(
         'Error al consultar propietario:',
         err
       );
@@ -307,7 +308,7 @@ export default function FichaPropietarioMascotaScreen() {
       setMenuAbierto(false);
       router.replace('/');
     } catch (err) {
-      console.error(
+      logger.error(
         'Error al cerrar sesión:',
         err
       );

@@ -1,6 +1,7 @@
 
 import { supabase } from './supabase';
 import { consultarPerfilPorId } from '../dao/perfilDAO';
+import { logger } from '../utils/logger';
 
 // ============================================================
 // RF05 - CONSULTAR Y ACTUALIZAR LA INFORMACIÓN DEL PERFIL
@@ -55,7 +56,7 @@ export async function verificarCuentaActiva(usuarioId) {
       perfil,
     };
   } catch (error) {
-    console.error(
+    logger.error(
       'Error al verificar la cuenta del usuario:',
       error
     );
@@ -211,7 +212,7 @@ export async function actualizarPerfilUsuario({
         : 'Los datos de su perfil se actualizaron correctamente.',
     };
   } catch (error) {
-    console.error('RF05: error al guardar los datos del perfil:', error);
+    logger.error('RF05: error al guardar los datos del perfil:', error);
 
     if (
       error.message === 'No se encontró una sesión activa.' ||

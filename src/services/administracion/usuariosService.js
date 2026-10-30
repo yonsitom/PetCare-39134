@@ -1,5 +1,6 @@
 
 import { supabase } from '../supabase';
+import { logger } from '../../utils/logger';
 
 export async function consultarUsuarios() {
   const { data, error } = await supabase
@@ -17,7 +18,7 @@ export async function consultarUsuarios() {
     .order('fecha_registro', { ascending: false });
 
   if (error) {
-    console.error(
+    logger.error(
       'Error al consultar perfiles:',
       error.message
     );

@@ -15,6 +15,7 @@ import { supabase } from '../../services/supabase';
 import { consultarAtenciones } from '../../dao/atencionesDAO';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
+import { logger } from '../../utils/logger';
 const COLORES = {
   primario: '#187C72',
   fondo: '#F4F7F8',
@@ -157,7 +158,7 @@ export default function PantallaSeguimiento() {
       setAtenciones(listaAtenciones ?? []);
       setActividades(respuestaActividades.data ?? []);
     } catch (e) {
-      console.error('Error al cargar Seguimiento:', e);
+      logger.error('Error al cargar Seguimiento:', e);
       setError(
         e.message ||
           'No se pudo cargar la información de seguimiento.'

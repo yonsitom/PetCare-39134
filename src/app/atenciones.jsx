@@ -17,6 +17,7 @@ import { consultarAtenciones } from '../dao/atencionesDAO';
 import EncabezadoPetCare from '../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../components/layout/MenuLateralDerecho';
 import { supabase } from '../services/supabase';
+import { logger } from '../utils/logger';
 
 const C = {
   fondo: '#F4F8F7',
@@ -112,7 +113,7 @@ export default function AtencionesScreen() {
       const resultado = await consultarAtenciones();
       setAtenciones(Array.isArray(resultado) ? resultado : []);
     } catch (error) {
-      console.error('Error al cargar las atenciones:', error);
+      logger.error('Error al cargar las atenciones:', error);
 
       Alert.alert(
         'No se pudieron cargar las atenciones',
@@ -192,7 +193,7 @@ export default function AtencionesScreen() {
       setMenuAbierto(false);
       router.replace('/');
     } catch (error) {
-      console.error('Error al cerrar sesión:', error);
+      logger.error('Error al cerrar sesión:', error);
       throw error;
     }
   }

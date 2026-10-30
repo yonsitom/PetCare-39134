@@ -13,6 +13,7 @@ import {
 
 import FormularioPropietario from './formularioPropietario';
 import { registrarPropietario } from '../../dao/propietarioDAO';
+import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -189,7 +190,7 @@ export default function RegistrarPropietario({
         onRegistrado(propietario || datosLimpios);
       }
     } catch (error) {
-      console.error('Error al registrar propietario:', error);
+      logger.error('Error al registrar propietario:', error);
 
       setModalConfirmacion(false);
 
