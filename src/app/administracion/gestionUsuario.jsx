@@ -29,7 +29,6 @@ import {
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 import TarjetaUsuario from '../../components/administracion/TarjetaUsuario';
-import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -118,7 +117,7 @@ export default function GestionUsuario() {
 
         setUsuarios(Array.isArray(datos) ? datos : []);
       } catch (e) {
-        logger.error('Error al cargar usuarios:', e);
+        console.error('Error al cargar usuarios:', e);
 
         setError(
           e?.message ||

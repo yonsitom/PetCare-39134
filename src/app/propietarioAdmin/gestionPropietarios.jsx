@@ -17,7 +17,6 @@ import { supabase } from '../../services/supabase';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 import { consultarPropietarios } from '../../dao/propietarioDAO';
-import { logger } from '../../utils/logger';
 
 const C = {
   fondo: '#F4F7F6',
@@ -128,7 +127,7 @@ export default function GestionPropietarios() {
         return lista.find((item) => String(obtenerId(item)) === String(idActual)) || actual;
       });
     } catch (error) {
-      logger.error('Error al cargar propietarios:', error);
+      console.error('Error al cargar propietarios:', error);
       Alert.alert('Error al cargar', mensajeError(error));
     } finally {
       setCargando(false);
@@ -175,7 +174,7 @@ export default function GestionPropietarios() {
 
       await cargarPropietarios();
     } catch (error) {
-      logger.error('Error al verificar el perfil:', error);
+      console.error('Error al verificar el perfil:', error);
       Alert.alert('Error', mensajeError(error));
       router.replace('/');
     }
@@ -295,7 +294,7 @@ export default function GestionPropietarios() {
       // el resultado confirmado por la función RPC.
       cargarPropietarios(false);
     } catch (error) {
-      logger.error('Error al cambiar estado del propietario:', error);
+      console.error('Error al cambiar estado del propietario:', error);
       setPropietarioSeleccionado(propietarioAnterior);
       setModalEstado(false);
       setResultado({

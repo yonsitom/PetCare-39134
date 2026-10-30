@@ -19,7 +19,6 @@ import {
 } from 'expo-router';
 
 import { listarActividadesPorEstado } from '../controllers/actividades/actividadesControlador';
-import { logger } from '../utils/logger';
 
 /**
  * RF10: visualizar actividades pendientes, completadas y no realizadas.
@@ -84,7 +83,7 @@ export default function ActividadesScreen() {
 
       setActividades(resultado);
     } catch (errorConsulta) {
-      logger.error('RF10: error al cargar la lista:', errorConsulta);
+      console.error('RF10: error al cargar la lista:', errorConsulta);
 
       setActividades([]);
       setError(errorConsulta?.message || MENSAJE_ERROR);

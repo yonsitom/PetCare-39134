@@ -1,6 +1,5 @@
 
 import { consultarActividadesPorEstado } from '../dao/actividadesDAO';
-import { logger } from '../utils/logger';
 
 /**
  * RF10: consultar actividades por estado.
@@ -37,7 +36,7 @@ export async function obtenerActividadesPorEstado(estado) {
 
     return Array.isArray(actividades) ? actividades : [];
   } catch (error) {
-    logger.error('RF10: error al consultar actividades:', error);
+    console.error('RF10: error al consultar actividades:', error);
 
     if (error?.message === 'El estado indicado no es válido.') {
       throw error;

@@ -1,6 +1,4 @@
 
-import { logger } from '../utils/logger';
-
 /**
  * RF01 - Controlador de inicio de sesión.
  *
@@ -106,7 +104,7 @@ export function crearControladorInicioSesion({
         try {
           await cerrarSesion();
         } catch (errorCierre) {
-          logger.error(
+          console.error(
             'No se pudo cerrar la sesión incompleta:',
             errorCierre
           );

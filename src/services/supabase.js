@@ -1,7 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-// La sesión se guarda cifrada (expo-secure-store) y no en AsyncStorage.
-import { almacenamientoSeguro } from './almacenamientoSeguro';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const supabaseUrl = 'https://eiaupodrnxbmxmurmfqo.supabase.co';
 
@@ -13,7 +12,7 @@ export const supabase = createClient(
   supabaseKey,
   {
     auth: {
-      storage: almacenamientoSeguro,
+      storage: AsyncStorage,
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,

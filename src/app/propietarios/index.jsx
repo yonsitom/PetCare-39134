@@ -21,7 +21,6 @@ import {
   consultarPropietarios,
   consultarMascotasPorPropietario,
 } from '../../dao/propietarioDAO';
-import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -72,7 +71,7 @@ export default function PantallaPropietarios() {
               ? mascotas.length
               : 0;
           } catch (error) {
-            logger.error(
+            console.error(
               `Error al consultar mascotas del propietario ${id}:`,
               error
             );
@@ -83,7 +82,7 @@ export default function PantallaPropietarios() {
 
       setCantidadesMascotas(cantidades);
     } catch (error) {
-      logger.error('Error al cargar propietarios:', error);
+      console.error('Error al cargar propietarios:', error);
       setErrorCarga(
         'No se pudo cargar la lista de propietarios. Intente nuevamente.'
       );

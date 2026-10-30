@@ -23,7 +23,6 @@ import {
   actualizarContrasenaRecuperada,
 } from '../services/recuperacionContrasenaServicio';
 import { supabase } from '../services/supabase';
-import { logger } from '../utils/logger';
 
 // Extraer parámetros tanto de la consulta como del fragmento del enlace.
 function obtenerParametrosEnlace(url) {
@@ -126,7 +125,7 @@ useEffect(() => {
         );
       }
     } catch (error) {
-      logger.error('RF03 - Error al validar enlace:', error?.message || error);
+      console.error('RF03 - Error al validar enlace:', error?.message || error);
 
       if (componenteActivo) {
         setEnlaceValido(false);

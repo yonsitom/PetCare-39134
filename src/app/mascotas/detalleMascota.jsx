@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { consultarMascotaPorId } from '../../dao/mascotaDAO';
-import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -44,7 +43,7 @@ export default function DetalleMascotaScreen() {
 
       if (!resultado) setError('No se encontró la mascota.');
     } catch (e) {
-      logger.error('Error al consultar detalle:', e);
+      console.error('Error al consultar detalle:', e);
       setError('No se pudo consultar el detalle de la mascota.');
     } finally {
       setCargando(false);

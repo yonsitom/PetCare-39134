@@ -40,7 +40,6 @@ import ConfirmacionMascota from '../../components/mascotas/ConfirmacionMascota';
 import { registrarMascota } from '../../dao/mascotaDAO';
 
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
-import { logger } from '../../utils/logger';
 
 // ======================================================
 // PALETA DE COLORES DE PETCARE
@@ -112,7 +111,7 @@ export default function NuevaMascota() {
           .single();
 
         if (errorPerfil) {
-          logger.error(
+          console.error(
             'Error al consultar el perfil:',
             errorPerfil.message
           );
@@ -129,7 +128,7 @@ export default function NuevaMascota() {
           setRolUsuario(data.rol || '');
         }
       } catch (err) {
-        logger.error(
+        console.error(
           'Error al cargar el perfil:',
           err
         );
@@ -192,7 +191,7 @@ export default function NuevaMascota() {
         },
       });
     } catch (err) {
-      logger.error(
+      console.error(
         'Error al registrar la mascota:',
         err
       );
@@ -265,7 +264,7 @@ export default function NuevaMascota() {
       // Regresar a la pantalla de inicio de sesión.
       router.replace('/');
     } catch (err) {
-      logger.error(
+      console.error(
         'Error al cerrar sesión:',
         err
       );

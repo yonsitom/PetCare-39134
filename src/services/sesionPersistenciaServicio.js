@@ -4,13 +4,11 @@
 // ============================================================
 
 // Limpiar la sesión local cuando deja de ser válida.
-import { logger } from '../utils/logger';
-
 async function invalidarSesionLocal(auth) {
   try {
     await auth.signOut({ scope: 'local' });
   } catch (error) {
-    logger.error(
+    console.error(
       'RF04 - Error al limpiar la sesión:',
       error?.message || error
     );
@@ -111,7 +109,7 @@ export async function verificarSesionPersistida({
       usuario: datosUsuario.user,
     };
   } catch (error) {
-    logger.error(
+    console.error(
       'RF04 - Error al verificar la sesión:',
       error?.message || error
     );

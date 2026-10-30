@@ -15,7 +15,6 @@ import {
 import { router } from 'expo-router';
 import { supabase } from '../../services/supabase';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
-import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -261,15 +260,15 @@ export default function NuevoUsuario() {
       );
 
       if (error || !data?.usuario) {
-        logger.error('Respuesta del registro:', data);
-        logger.error('Error del registro:', error?.message);
+        console.error('Respuesta del registro:', data);
+        console.error('Error del registro:', error?.message);
 
         if (error?.context) {
           try {
             const respuesta = await error.context.clone().json();
-            logger.error('Detalle de Supabase:', respuesta);
+            console.error('Detalle de Supabase:', respuesta);
           } catch {
-            logger.error('No se pudo leer el detalle de la respuesta.');
+            console.error('No se pudo leer el detalle de la respuesta.');
           }
         }
 
@@ -291,7 +290,7 @@ export default function NuevoUsuario() {
       });
       setRegistroExitoso(true);
     } catch (error) {
-      logger.error('Error al registrar usuario:', error);
+      console.error('Error al registrar usuario:', error);
       const nuevosErrores = interpretarErrorServidor(error);
       mostrarErrores(nuevosErrores);
       if (nuevosErrores.general) {

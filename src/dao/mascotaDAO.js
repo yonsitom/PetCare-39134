@@ -1,6 +1,5 @@
 
 import { supabase } from '../services/supabase';
-import { logger } from '../utils/logger';
 
 /**
  * Relación entre mascotas y propietarios.
@@ -76,7 +75,7 @@ export async function consultarMascotas() {
     .order('nombre', { ascending: true });
 
   if (error) {
-    logger.error('Error al consultar mascotas:', error);
+    console.error('Error al consultar mascotas:', error);
     throw error;
   }
 
@@ -106,7 +105,7 @@ export async function buscarMascotas(termino) {
     .order('nombre', { ascending: true });
 
   if (error) {
-    logger.error('Error al buscar mascotas:', error);
+    console.error('Error al buscar mascotas:', error);
     throw error;
   }
 
@@ -130,7 +129,7 @@ export async function consultarMascotaPorId(numeroHistoria) {
     .maybeSingle();
 
   if (error) {
-    logger.error('Error al consultar la mascota:', error);
+    console.error('Error al consultar la mascota:', error);
     throw error;
   }
 
@@ -148,7 +147,7 @@ export async function consultarPropietariosParaMascota() {
     .order('nombre', { ascending: true });
 
   if (error) {
-    logger.error(
+    console.error(
       'Error al consultar propietarios para mascota:',
       error
     );
@@ -169,7 +168,7 @@ export async function consultarPropietarios() {
     .order('nombre', { ascending: true });
 
   if (error) {
-    logger.error('Error al consultar propietarios:', error);
+    console.error('Error al consultar propietarios:', error);
     throw error;
   }
 
@@ -229,7 +228,7 @@ export async function registrarMascota(datos) {
     .single();
 
   if (error) {
-    logger.error('Error al registrar la mascota:', error);
+    console.error('Error al registrar la mascota:', error);
     throw error;
   }
 
@@ -295,7 +294,7 @@ export async function actualizarMascota(numeroHistoria, datos) {
     .single();
 
   if (error) {
-    logger.error('Error al actualizar la mascota:', error);
+    console.error('Error al actualizar la mascota:', error);
     throw error;
   }
 
@@ -321,7 +320,7 @@ export async function desactivarMascota(numeroHistoria) {
     .single();
 
   if (error) {
-    logger.error('Error al desactivar la mascota:', error);
+    console.error('Error al desactivar la mascota:', error);
     throw error;
   }
 
@@ -348,7 +347,7 @@ export async function consultarMascotasPorPropietario(
     .order('nombre', { ascending: true });
 
   if (error) {
-    logger.error(
+    console.error(
       'Error al consultar mascotas por propietario:',
       error
     );

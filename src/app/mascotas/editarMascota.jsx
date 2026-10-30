@@ -52,7 +52,6 @@ import {
   actualizarMascota,
   consultarMascotaPorId,
 } from '../../dao/mascotaDAO';
-import { logger } from '../../utils/logger';
 
 // ======================================================
 // PALETA VISUAL PETCARE
@@ -129,7 +128,7 @@ export default function EditarMascotaScreen() {
           .single();
 
         if (errorPerfil) {
-          logger.error(
+          console.error(
             'Error al consultar el perfil:',
             errorPerfil.message
           );
@@ -141,7 +140,7 @@ export default function EditarMascotaScreen() {
           setRolUsuario(data.rol || '');
         }
       } catch (err) {
-        logger.error('Error al cargar el perfil:', err);
+        console.error('Error al cargar el perfil:', err);
       }
     }
 
@@ -179,7 +178,7 @@ export default function EditarMascotaScreen() {
         setError('No se encontró la mascota que deseas editar.');
       }
     } catch (err) {
-      logger.error(
+      console.error(
         'Error al cargar la mascota para editar:',
         err
       );
@@ -296,7 +295,7 @@ export default function EditarMascotaScreen() {
         'Los cambios de la mascota se guardaron correctamente.'
       );
     } catch (err) {
-      logger.error(
+      console.error(
         'Error al actualizar la mascota:',
         err
       );
@@ -336,7 +335,7 @@ export default function EditarMascotaScreen() {
       setMenuAbierto(false);
       router.replace('/');
     } catch (err) {
-      logger.error('Error al cerrar sesión:', err);
+      console.error('Error al cerrar sesión:', err);
 
       Alert.alert(
         'Error',

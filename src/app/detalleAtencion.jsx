@@ -20,8 +20,6 @@ import {
 import EncabezadoPetCare from '../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../components/layout/MenuLateralDerecho';
 import { supabase } from '../services/supabase';
-import { exportarAtencionPdf } from '../services/exportarPdfServicio';
-import { logger } from '../utils/logger';
 
 const C = {
   fondo: '#F4F8F7',
@@ -148,7 +146,6 @@ export default function DetalleAtencionScreen() {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [rolUsuario, setRolUsuario] = useState('');
-  const [exportando, setExportando] = useState(false);
 
   /*
    * Consulta la atención y sus actividades.
@@ -197,7 +194,7 @@ export default function DetalleAtencionScreen() {
         );
         setErrorActividades('');
       } catch (error) {
-        logger.error(
+        console.error(
           'Error al consultar las actividades de la atención:',
           error
         );
@@ -211,7 +208,7 @@ export default function DetalleAtencionScreen() {
         setCargandoActividades(false);
       }
     } catch (error) {
-      logger.error(
+      console.error(
         'Error al consultar el detalle de la atención:',
         error
       );
@@ -248,33 +245,8 @@ export default function DetalleAtencionScreen() {
       setMenuAbierto(false);
       router.replace('/');
     } catch (error) {
-      logger.error('Error al cerrar sesión:', error);
+      console.error('Error al cerrar sesión:', error);
       throw error;
-    }
-  }
-
-  /*
-   * Exportar el detalle de la atención a PDF y compartirlo
-   * (expo-print + expo-sharing).
-   */
-  async function exportarPdf() {
-    setExportando(true);
-
-    try {
-      await exportarAtencionPdf({
-        atencion,
-        mascota: obtenerMascota(atencion),
-        actividades,
-      });
-    } catch (error) {
-      logger.error('Error al exportar el PDF de la atención:', error);
-
-      Alert.alert(
-        'No se pudo exportar',
-        'Ocurrió un error al generar el PDF. Intenta nuevamente.'
-      );
-    } finally {
-      setExportando(false);
     }
   }
 
@@ -354,21 +326,6 @@ export default function DetalleAtencionScreen() {
             ← Volver al listado
           </Text>
         </Pressable>
-
-        {!cargando && atencion ? (
-          <Pressable
-            style={[
-              estilos.botonPrincipal,
-              exportando && { opacity: 0.6 },
-            ]}
-            onPress={exportarPdf}
-            disabled={exportando}
-          >
-            <Text style={estilos.textoBotonPrincipal}>
-              {exportando ? 'Generando PDF...' : 'Exportar PDF'}
-            </Text>
-          </Pressable>
-        ) : null}
 
         {cargando ? (
           <View style={estilos.estadoCarga}>

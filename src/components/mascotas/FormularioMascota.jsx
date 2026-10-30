@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../../services/supabase';
-import { logger } from '../../utils/logger';
 
 // ======================================================
 // COLORES PETCARE: PALETA SUAVE Y MINIMALISTA
@@ -309,7 +308,7 @@ export default function FormularioMascota({
           setPropietarios(data || []);
         }
       } catch (error) {
-        logger.error(
+        console.error(
           'Error al cargar propietarios:',
           error.message
         );
@@ -479,7 +478,7 @@ export default function FormularioMascota({
         await onContinuar(datosMascota);
       }
     } catch (error) {
-      logger.error(
+      console.error(
         'Error al enviar la mascota:',
         error
       );

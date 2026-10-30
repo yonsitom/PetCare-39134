@@ -1,7 +1,6 @@
 
 import { supabase } from '../services/supabase';
 import { validarDatosPropietario } from '../utils/validacionesPropietario';
-import { logger } from '../utils/logger';
 
 // ============================================================
 // DAO DE PROPIETARIOS
@@ -129,7 +128,7 @@ export async function consultarPropietarios() {
     .order('nombre', { ascending: true });
 
   if (error) {
-    logger.error('Error al consultar propietarios:', error);
+    console.error('Error al consultar propietarios:', error);
     throw error;
   }
 
@@ -155,7 +154,7 @@ export async function consultarPropietarioPorId(propietarioId) {
     .maybeSingle();
 
   if (error) {
-    logger.error('Error al consultar propietario:', error);
+    console.error('Error al consultar propietario:', error);
     throw error;
   }
 
@@ -189,7 +188,7 @@ export async function consultarMascotasPorPropietario(propietarioId) {
     .order('nombre', { ascending: true });
 
   if (error) {
-    logger.error('Error al consultar mascotas del propietario:', error);
+    console.error('Error al consultar mascotas del propietario:', error);
     throw error;
   }
 
@@ -246,7 +245,7 @@ export async function registrarPropietario(datos) {
       }
     }
 
-    logger.error('Error al registrar propietario:', error);
+    console.error('Error al registrar propietario:', error);
     throw error;
   }
 
@@ -317,7 +316,7 @@ export async function actualizarPropietario(propietarioId, datos) {
       }
     }
 
-    logger.error('Error al actualizar propietario:', error);
+    console.error('Error al actualizar propietario:', error);
     throw error;
   }
 

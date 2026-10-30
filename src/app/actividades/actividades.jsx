@@ -16,7 +16,6 @@ import { router } from 'expo-router';
 import { supabase } from '../../services/supabase';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
-import { logger } from '../../utils/logger';
 
 // Paleta visual de PetCare.
 const C = {
@@ -202,7 +201,7 @@ export default function ActividadesScreen() {
 
       setActividades(actividadesPreparadas);
     } catch (error) {
-      logger.error('Error al cargar actividades:', error);
+      console.error('Error al cargar actividades:', error);
 
       setErrorCarga(true);
 

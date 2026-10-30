@@ -18,7 +18,6 @@ import {
 } from 'react-native';
 
 import { consultarPropietarios } from '../../dao/propietarioDAO';
-import { logger } from '../../utils/logger';
 
 const COLORES = {
   primario: '#187C72',
@@ -59,7 +58,7 @@ export default function ListaPropietarios({
           Array.isArray(resultado) ? resultado : []
         );
       } catch (error) {
-        logger.error('Error al consultar propietarios:', error);
+        console.error('Error al consultar propietarios:', error);
 
         setMensajeError(
           'No se pudo consultar la información del propietario. Intente nuevamente.'
