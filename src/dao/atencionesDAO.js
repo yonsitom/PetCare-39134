@@ -1,33 +1,43 @@
 
 import { supabase } from '../services/supabase';
+import { logger } from '../utils/logger';
 
 /*
  * ============================================================
  * PETCARE — DAO DE ATENCIONES
  * ============================================================
  *
- * MVC:
+ * ARQUITECTURA MVC:
  * - Vista: src/app/
  * - Controlador: src/controllers/atenciones/
- * - DAO: este archivo
- * - Persistencia: Supabase / PostgreSQL
+ * - DAO: este archivo.
+ * - Persistencia: Supabase / PostgreSQL.
  *
- * SOLID:
- * - SRP: centraliza el acceso a datos de las atenciones.
- * - DIP: los controladores delegan la persistencia en este DAO.
+ * PRINCIPIOS SOLID:
+ * - SRP: centraliza las operaciones de persistencia de atenciones.
+ * - DIP: los controladores consumen funciones del DAO.
+ *
+ * DISEÑO DAO:
+ * - La interfaz no consulta directamente las tablas.
+ * - El DAO normaliza los datos y gestiona errores de persistencia.
  *
  * RF19-RF20: historial y consultas de atenciones.
- * RF21: consultar atenciones.
- * RF22: registrar atención veterinaria.
- * RF23: generar fecha y hora de inicio desde PostgreSQL.
+ * RF21: consultar atenciones y mascotas.
+ * RF22: registrar una atención veterinaria.
+ * RF23: generar fecha y hora desde PostgreSQL.
  * RF24: consultar detalle de atención.
- * RF25: consultar el estado de una atención.
+ * RF25: consultar estado y evitar atenciones duplicadas.
  *
- * IMPORTANTE:
- * Una atención finalizada no debe reabrirse automáticamente.
- * El cierre automático según el estado de las actividades se
- * implementará en el DAO de actividades, sin permitir reabrir
- * una atención finalizada.
+ * REGLAS:
+ * - Una mascota no debe tener más de una atención activa.
+ * - PostgreSQL debe impedir duplicados de forma atómica.
+ * - Las atenciones finalizadas no se reabren automáticamente.
+ * - Peso y temperatura son opcionales, pero se validan si se ingresan.
+ * - Los síntomas y el diagnóstico pueden ser opcionales.
+ * - El motivo de consulta es obligatorio.
+ *
+ * PRUEBAS:
+ * - src/tests/atenciones/atencionesDAO.test.js
  * ============================================================
  */
 
@@ -49,12 +59,35 @@ function textoOpcional(valor) {
 }
 
 /**
- * Valida números opcionales.
+ * Convierte relaciones de Supabase que pueden llegar como
+ * objeto o como arreglo en un único objeto.
+ */
+function primerRelacion(valor) {
+  return Array.isArray(valor) ? valor[0] ?? null : valor ?? null;
+}
+
+/**
+ * Construye un error identificable para una atención activa.
+ */
+function crearErrorAtencionActiva(atencion) {
+  const mensaje = atencion?.atencion_id
+    ? `La mascota ya tiene la atención N.º ${atencion.atencion_id} activa.`
+    : 'La mascota ya tiene una atención activa.';
+
+  const error = new Error(mensaje);
+  error.code = 'ATENCION_ACTIVA_EXISTENTE';
+  error.atencion = atencion ?? null;
+
+  return error;
+}
+
+/**
+ * Normaliza y valida valores numéricos opcionales.
+ *
+ * Peso: 0.01 a 500 kg.
+ * Temperatura: 25 a 45 °C.
  *
  * Los valores vacíos se convierten en null.
- * Los valores no numéricos, cero o negativos se rechazan.
- * El parámetro nombre debe incluir el artículo correspondiente:
- * 'El peso' o 'La temperatura'.
  */
 function normalizarNumero(valor, nombre) {
   if (
@@ -65,11 +98,34 @@ function normalizarNumero(valor, nombre) {
     return null;
   }
 
-  const numero = Number(String(valor).trim().replace(',', '.'));
+  const texto = String(valor).trim().replace(',', '.');
+  const mensaje = `${nombre} debe ser un número mayor que cero.`;
+
+  if (!/^\d+(\.\d+)?$/.test(texto)) {
+    throw new Error(mensaje);
+  }
+
+  const numero = Number(texto);
 
   if (!Number.isFinite(numero) || numero <= 0) {
+    throw new Error(mensaje);
+  }
+
+  if (
+    nombre === 'El peso' &&
+    (numero < 0.01 || numero > 500)
+  ) {
     throw new Error(
-      `${nombre} debe ser un número mayor que cero.`
+      'El peso debe estar entre 0.01 y 500 kg.'
+    );
+  }
+
+  if (
+    nombre === 'La temperatura' &&
+    (numero < 25 || numero > 45)
+  ) {
+    throw new Error(
+      'La temperatura debe estar entre 25 y 45 °C.'
     );
   }
 
@@ -77,7 +133,7 @@ function normalizarNumero(valor, nombre) {
 }
 
 /**
- * RF21: consultar mascotas activas para registrar atención.
+ * RF21: consultar las mascotas activas para registrar atenciones.
  */
 export async function consultarMascotasParaAtencion() {
   const { data, error } = await supabase
@@ -100,8 +156,14 @@ export async function consultarMascotasParaAtencion() {
     .order('nombre', { ascending: true });
 
   if (error) {
-    console.error('Error consultando mascotas:', error.message);
-    throw new Error('No se pudieron consultar las mascotas.');
+    logger.error(
+      'Error consultando mascotas:',
+      error.message
+    );
+
+    throw new Error(
+      'No se pudieron consultar las mascotas.'
+    );
   }
 
   return (data ?? []).filter((mascota) => {
@@ -111,7 +173,7 @@ export async function consultarMascotasParaAtencion() {
 }
 
 /**
- * RF21: consultar todas las atenciones.
+ * RF21: consultar las atenciones con sus mascotas y propietarios.
  */
 export async function consultarAtenciones() {
   const { data, error } = await supabase
@@ -124,25 +186,112 @@ export async function consultarAtenciones() {
       estado,
       observaciones,
       mascotas (
+        numero_historia,
         nombre,
         especie,
         raza,
-        numero_historia
+        propietarios (
+          propietario_id,
+          nombre,
+          apellido,
+          documento_identidad,
+          telefono
+        )
       )
     `)
     .order('fecha_inicio', { ascending: false });
 
   if (error) {
-    console.error('Error consultando atenciones:', error.message);
-    throw new Error('No se pudieron consultar las atenciones.');
+    logger.error(
+      'Error consultando las atenciones:',
+      error.message
+    );
+
+    throw new Error(
+      'No se pudieron consultar las atenciones.'
+    );
   }
 
-  return data ?? [];
+  return (data ?? []).map((atencion) => {
+    const mascota = primerRelacion(atencion.mascotas);
+    const propietario = primerRelacion(mascota?.propietarios);
+
+    const nombreCompleto = [
+      propietario?.nombre,
+      propietario?.apellido,
+    ]
+      .filter((parte) => String(parte ?? '').trim())
+      .join(' ')
+      .trim();
+
+    return {
+      ...atencion,
+      mascota: mascota
+        ? { ...mascota, propietarios: propietario }
+        : null,
+      propietario: propietario
+        ? {
+            ...propietario,
+            nombre_completo: nombreCompleto,
+          }
+        : null,
+      nombre_mascota: mascota?.nombre ?? '',
+      nombre_propietario: nombreCompleto,
+    };
+  });
 }
 
 /**
- * RF22/RF23: crear atención y actividad Consulta inicial.
- * La función PostgreSQL se encarga de generar fecha_inicio.
+ * RF22/RF25: consultar si una mascota tiene una atención activa.
+ */
+export async function consultarAtencionActivaPorMascota(
+  numeroHistoria
+) {
+  const historia = normalizarHistoria(numeroHistoria);
+
+  if (!historia) {
+    throw new Error('Debe seleccionar una mascota.');
+  }
+
+  const { data, error } = await supabase
+    .from('atenciones')
+    .select(`
+      atencion_id,
+      numero_historia,
+      fecha_inicio,
+      fecha_fin,
+      estado
+    `)
+    .eq('numero_historia', historia)
+    .eq('estado', 'Activa')
+    .order('fecha_inicio', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    logger.error(
+      'Error verificando atención activa:',
+      error.message
+    );
+
+    throw new Error(
+      'No se pudo comprobar si la mascota tiene una atención activa.'
+    );
+  }
+
+  return data?.[0] ?? null;
+}
+
+/**
+ * RF22/RF23:
+ * crear una atención inicial mediante PostgreSQL.
+ *
+ * La fecha de inicio y la creación de la actividad inicial
+ * corresponden a la función SQL crear_atencion_inicial.
+ *
+ * IMPORTANTE:
+ * La función SQL debe impedir duplicados de manera atómica.
+ * Una consulta previa en JavaScript no evita por sí sola
+ * solicitudes simultáneas.
  */
 export async function crearAtencionInicial(numeroHistoria) {
   const historia = normalizarHistoria(numeroHistoria);
@@ -160,7 +309,11 @@ export async function crearAtencionInicial(numeroHistoria) {
     .maybeSingle();
 
   if (errorMascota) {
-    console.error('Error verificando mascota:', errorMascota.message);
+    logger.error(
+      'Error verificando mascota:',
+      errorMascota.message
+    );
+
     throw new Error(
       'No se pudo verificar la mascota. Intente nuevamente.'
     );
@@ -174,7 +327,10 @@ export async function crearAtencionInicial(numeroHistoria) {
 
   const estadoMascota = normalizar(mascota.estado);
 
-  if (estadoMascota !== 'activo' && estadoMascota !== 'activa') {
+  if (
+    estadoMascota !== 'activo' &&
+    estadoMascota !== 'activa'
+  ) {
     throw new Error(
       'No se puede registrar una atención para una mascota inactiva.'
     );
@@ -188,9 +344,38 @@ export async function crearAtencionInicial(numeroHistoria) {
   );
 
   if (error) {
-    console.error('Error creando atención inicial:', error.message);
+    logger.error(
+      'Error creando atención inicial:',
+      error.message
+    );
 
-    const mensaje = normalizar(error.message);
+    const mensaje = normalizar([
+      error.message,
+      error.details,
+      error.hint,
+      error.code,
+    ].filter(Boolean).join(' '));
+
+    if (
+      mensaje.includes('atencion_activa_existente') ||
+      mensaje.includes('atencion activa existente')
+    ) {
+      let atencionActual = null;
+
+      try {
+        atencionActual =
+          await consultarAtencionActivaPorMascota(
+            mascota.numero_historia
+          );
+      } catch (errorConsulta) {
+        logger.error(
+          'No se pudo recuperar la atención activa:',
+          errorConsulta.message
+        );
+      }
+
+      throw crearErrorAtencionActiva(atencionActual);
+    }
 
     if (
       mensaje.includes(
@@ -203,9 +388,7 @@ export async function crearAtencionInicial(numeroHistoria) {
     }
 
     if (
-      mensaje.includes(
-        'no se pudo registrar el inicio de la atencion'
-      )
+      mensaje.includes('no se pudo registrar el inicio de la atencion')
     ) {
       throw new Error(
         'No se pudo registrar el inicio de la atención. Intente nuevamente.'
@@ -213,8 +396,8 @@ export async function crearAtencionInicial(numeroHistoria) {
     }
 
     if (
-      mensaje.includes('no existe o no se encuentra activa') ||
-      mensaje.includes('la mascota no existe o no esta activa')
+      mensaje.includes('la mascota no existe o no esta activa') ||
+      mensaje.includes('no existe o no se encuentra activa')
     ) {
       throw new Error(
         'La mascota no existe o no se encuentra activa.'
@@ -228,6 +411,16 @@ export async function crearAtencionInicial(numeroHistoria) {
     ) {
       throw new Error(
         'El tipo de actividad Consulta no está disponible.'
+      );
+    }
+
+    if (
+      mensaje.includes(
+        'seleccione una mascota para registrar la atencion'
+      )
+    ) {
+      throw new Error(
+        'Seleccione una mascota para registrar la atención.'
       );
     }
 
@@ -259,10 +452,16 @@ export async function crearAtencionInicial(numeroHistoria) {
 }
 
 /**
- * RF23: guardar datos clínicos de una actividad Consulta existente.
- * Rechaza guardar datos si la atención ya está finalizada.
+ * RF23: guardar los datos clínicos de una actividad Consulta.
+ *
+ * El motivo es obligatorio.
+ * Los síntomas, el diagnóstico, el peso y la temperatura
+ * son opcionales; si se ingresan, las medidas se validan.
  */
-export async function guardarDatosConsulta(actividadId, datos = {}) {
+export async function guardarDatosConsulta(
+  actividadId,
+  datos = {}
+) {
   if (
     actividadId === undefined ||
     actividadId === null ||
@@ -278,7 +477,9 @@ export async function guardarDatosConsulta(actividadId, datos = {}) {
   ).trim();
 
   if (!motivoConsulta) {
-    throw new Error('El motivo de consulta es obligatorio.');
+    throw new Error(
+      'El motivo de consulta es obligatorio.'
+    );
   }
 
   const peso = normalizarNumero(datos.peso, 'El peso');
@@ -287,28 +488,30 @@ export async function guardarDatosConsulta(actividadId, datos = {}) {
     'La temperatura'
   );
 
-  const { data: actividad, error: errorActividad } = await supabase
-    .from('actividades')
-    .select(`
-      actividad_id,
-      tipo,
-      estado,
-      eliminado,
-      atencion_id,
-      atenciones (
+  const { data: actividad, error: errorActividad } =
+    await supabase
+      .from('actividades')
+      .select(`
+        actividad_id,
+        tipo,
+        estado,
+        eliminado,
         atencion_id,
-        estado
-      )
-    `)
-    .eq('actividad_id', actividadId)
-    .eq('eliminado', false)
-    .maybeSingle();
+        atenciones (
+          atencion_id,
+          estado
+        )
+      `)
+      .eq('actividad_id', actividadId)
+      .eq('eliminado', false)
+      .maybeSingle();
 
   if (errorActividad) {
-    console.error(
+    logger.error(
       'Error verificando actividad de consulta:',
       errorActividad.message
     );
+
     throw new Error(
       'No se pudo verificar la actividad de consulta.'
     );
@@ -326,9 +529,7 @@ export async function guardarDatosConsulta(actividadId, datos = {}) {
     );
   }
 
-  const atencion = Array.isArray(actividad.atenciones)
-    ? actividad.atenciones[0]
-    : actividad.atenciones;
+  const atencion = primerRelacion(actividad.atenciones);
 
   if (
     !atencion ||
@@ -357,12 +558,20 @@ export async function guardarDatosConsulta(actividadId, datos = {}) {
     .single();
 
   if (error) {
-    console.error('Error guardando datos clínicos:', error.message);
+    logger.error(
+      'Error guardando datos clínicos:',
+      error.message
+    );
+
     throw new Error(
       'No se pudieron guardar los datos clínicos. Intente nuevamente.'
     );
   }
 
+  /*
+   * RF23: actualizar las observaciones generales de la atención
+   * solo cuando el formulario haya enviado ese campo.
+   */
   if (datos.observaciones !== undefined) {
     const { error: errorObservaciones } = await supabase
       .from('atenciones')
@@ -373,10 +582,11 @@ export async function guardarDatosConsulta(actividadId, datos = {}) {
       .eq('estado', 'Activa');
 
     if (errorObservaciones) {
-      console.error(
+      logger.error(
         'Error guardando observaciones:',
         errorObservaciones.message
       );
+
       throw new Error(
         'Los datos clínicos se guardaron, pero no se pudieron guardar las observaciones generales.'
       );
@@ -387,10 +597,19 @@ export async function guardarDatosConsulta(actividadId, datos = {}) {
 }
 
 /**
- * Compatibilidad con formularios que llaman registrarAtencion().
+ * RF22/RF23:
+ * registrar la atención y guardar los datos de la consulta inicial.
+ *
+ * Responsabilidades:
+ * 1. Validar los datos recibidos.
+ * 2. Crear la atención y su actividad inicial mediante PostgreSQL.
+ * 3. Guardar los datos clínicos de la consulta.
+ * 4. Guardar las observaciones generales cuando se proporcionen.
  */
 export async function registrarAtencion(datos = {}) {
-  const numeroHistoria = normalizarHistoria(datos.numero_historia);
+  const numeroHistoria = normalizarHistoria(
+    datos.numero_historia
+  );
 
   if (!numeroHistoria) {
     throw new Error(
@@ -398,29 +617,38 @@ export async function registrarAtencion(datos = {}) {
     );
   }
 
-  const motivo = String(datos.motivo_consulta ?? '').trim();
+  const motivo = String(
+    datos.motivo_consulta ?? ''
+  ).trim();
 
   if (!motivo) {
-    throw new Error('El motivo de consulta es obligatorio.');
+    throw new Error(
+      'El motivo de consulta es obligatorio.'
+    );
   }
 
-  // Validar antes de crear cualquier registro.
+  // Los síntomas son opcionales en el DAO.
+  const sintomas = textoOpcional(datos.sintomas);
+  const diagnostico = textoOpcional(datos.diagnostico);
+
+  // Validar antes de crear registros en PostgreSQL.
   const peso = normalizarNumero(datos.peso, 'El peso');
   const temperatura = normalizarNumero(
     datos.temperatura,
     'La temperatura'
   );
 
+  // La función SQL debe garantizar que no existan duplicados.
   const atencion = await crearAtencionInicial(numeroHistoria);
 
   const consulta = await guardarDatosConsulta(
     atencion.actividad_id,
     {
       motivo_consulta: motivo,
-      sintomas: textoOpcional(datos.sintomas),
+      sintomas,
       peso,
       temperatura,
-      diagnostico: textoOpcional(datos.diagnostico),
+      diagnostico,
       observaciones: datos.observaciones,
     }
   );
@@ -432,7 +660,7 @@ export async function registrarAtencion(datos = {}) {
 }
 
 /**
- * RF24: consultar detalle de una atención.
+ * RF24: consultar el detalle de una atención.
  */
 export async function consultarAtencionPorId(atencionId) {
   if (
@@ -466,7 +694,11 @@ export async function consultarAtencionPorId(atencionId) {
     .maybeSingle();
 
   if (error) {
-    console.error('Error consultando detalle:', error.message);
+    logger.error(
+      'Error consultando detalle:',
+      error.message
+    );
+
     throw new Error(
       'No se pudo consultar el detalle de la atención.'
     );
@@ -482,7 +714,7 @@ export async function consultarAtencionPorId(atencionId) {
 }
 
 /**
- * Consultar los datos clínicos de una actividad Consulta.
+ * RF23: consultar los datos clínicos de una actividad Consulta.
  */
 export async function consultarDatosConsulta(actividadId) {
   if (
@@ -502,7 +734,11 @@ export async function consultarDatosConsulta(actividadId) {
     .maybeSingle();
 
   if (error) {
-    console.error('Error consultando datos clínicos:', error.message);
+    logger.error(
+      'Error consultando datos clínicos:',
+      error.message
+    );
+
     throw new Error(
       'No se pudieron consultar los datos clínicos.'
     );
@@ -512,7 +748,7 @@ export async function consultarDatosConsulta(actividadId) {
 }
 
 /**
- * RF25: consultar estado de una atención.
+ * RF25: consultar el estado actual de una atención.
  */
 export async function consultarEstadoAtencion(atencionId) {
   if (
@@ -532,7 +768,11 @@ export async function consultarEstadoAtencion(atencionId) {
     .maybeSingle();
 
   if (error) {
-    console.error('Error consultando estado:', error.message);
+    logger.error(
+      'Error consultando estado:',
+      error.message
+    );
+
     throw new Error(
       'No se pudo cargar el estado de la atención.'
     );
@@ -556,9 +796,11 @@ export async function consultarEstadoAtencion(atencionId) {
 }
 
 /**
- * RF19: consultar atenciones asociadas a una mascota.
+ * RF19: consultar todas las atenciones de una mascota.
  */
-export async function consultarAtencionesPorMascota(numeroHistoria) {
+export async function consultarAtencionesPorMascota(
+  numeroHistoria
+) {
   const historia = normalizarHistoria(numeroHistoria);
 
   if (!historia) {
@@ -581,10 +823,11 @@ export async function consultarAtencionesPorMascota(numeroHistoria) {
     .order('fecha_inicio', { ascending: false });
 
   if (error) {
-    console.error(
+    logger.error(
       'Error consultando atenciones de la mascota:',
       error.message
     );
+
     throw new Error(
       'No se pudo consultar la información de la mascota. Intente nuevamente.'
     );
@@ -594,7 +837,7 @@ export async function consultarAtencionesPorMascota(numeroHistoria) {
 }
 
 /**
- * RF20: buscar mascotas por nombre o historia clínica.
+ * RF20: buscar mascotas por nombre o número de historia.
  */
 export async function buscarMascotasParaHistorial(termino) {
   const busqueda = String(termino ?? '').trim();
@@ -603,7 +846,10 @@ export async function buscarMascotasParaHistorial(termino) {
     return [];
   }
 
-  const terminoSeguro = busqueda.replace(/[%_,()]/g, ' ').trim();
+  // Evitar que caracteres especiales alteren la expresión de búsqueda.
+  const terminoSeguro = busqueda
+    .replace(/[%_,()]/g, ' ')
+    .trim();
 
   if (!terminoSeguro) {
     return [];
@@ -629,10 +875,11 @@ export async function buscarMascotasParaHistorial(termino) {
     .limit(20);
 
   if (error) {
-    console.error(
+    logger.error(
       'RF20: Error buscando mascotas para el historial:',
       error.message
     );
+
     throw new Error(
       'No se pudo cargar el historial de atención. Intente nuevamente.'
     );
@@ -642,7 +889,7 @@ export async function buscarMascotasParaHistorial(termino) {
 }
 
 /**
- * RF20: consultar historial de atenciones de una mascota.
+ * RF20: consultar el historial de atenciones de una mascota.
  */
 export async function consultarHistorialAtencionesPorMascota(
   numeroHistoria
@@ -669,10 +916,11 @@ export async function consultarHistorialAtencionesPorMascota(
     .order('fecha_inicio', { ascending: false });
 
   if (error) {
-    console.error(
+    logger.error(
       'RF20: Error consultando el historial:',
       error.message
     );
+
     throw new Error(
       'No se pudo cargar el historial de atención. Intente nuevamente.'
     );
@@ -682,7 +930,7 @@ export async function consultarHistorialAtencionesPorMascota(
 }
 
 /**
- * Consultar actividades para la pantalla Seguimiento.
+ * RF38-RF43: consultar las actividades para Seguimiento.
  */
 export async function consultarActividadesSeguimiento() {
   const { data, error } = await supabase
@@ -723,22 +971,24 @@ export async function consultarActividadesSeguimiento() {
     .order('fecha_registro', { ascending: false });
 
   if (error) {
-    console.error(
+    logger.error(
       'Error consultando actividades de seguimiento:',
       error.message
     );
+
     throw new Error(
       'No se pudieron consultar las actividades de seguimiento.'
     );
   }
 
   return (data ?? []).map((item) => {
-    const atencion = item.atenciones || {};
-    const mascota = atencion.mascotas || {};
-    const propietario = mascota.propietarios || {};
+    const atencion = primerRelacion(item.atenciones) ?? {};
+    const mascota = primerRelacion(atencion.mascotas) ?? {};
+    const propietario = primerRelacion(mascota.propietarios);
 
     return {
       ...item,
+      atenciones: atencion,
       mascota,
       propietario,
       estadoAtencion: atencion.estado,
@@ -751,7 +1001,7 @@ export async function consultarActividadesSeguimiento() {
 }
 
 /**
- * RF20: consultar historial general de atenciones.
+ * RF20/RF38-RF43: consultar el historial general de seguimiento.
  */
 export async function consultarHistorialSeguimiento() {
   const { data, error } = await supabase
@@ -779,18 +1029,25 @@ export async function consultarHistorialSeguimiento() {
     .order('fecha_inicio', { ascending: false });
 
   if (error) {
-    console.error(
+    logger.error(
       'Error consultando historial de seguimiento:',
       error.message
     );
+
     throw new Error(
       'No se pudo consultar el historial de atención.'
     );
   }
 
-  return (data ?? []).map((atencion) => ({
-    ...atencion,
-    mascota: atencion.mascotas || {},
-    propietario: atencion.mascotas?.propietarios || {},
-  }));
+  return (data ?? []).map((atencion) => {
+    const mascota = primerRelacion(atencion.mascotas) ?? {};
+    const propietario = primerRelacion(mascota.propietarios);
+
+    return {
+      ...atencion,
+      mascotas: mascota,
+      mascota,
+      propietario,
+    };
+  });
 }

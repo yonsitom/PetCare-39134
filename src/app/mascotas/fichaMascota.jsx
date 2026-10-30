@@ -1,5 +1,6 @@
 
- // src/app/mascotas/fichaMascota.jsx
+// src/app/mascotas/fichaMascota.jsx
+// RF20: Consultar historial de atención de una mascota.
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -148,7 +149,7 @@ export default function FichaMascotaScreen() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
 
-  // Estados para mostrar el menú lateral compartido.
+  // Estados del menú lateral compartido.
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [nombreUsuario, setNombreUsuario] = useState('Usuario');
   const [rolUsuario, setRolUsuario] = useState('');
@@ -196,9 +197,13 @@ export default function FichaMascotaScreen() {
     };
   }, []);
 
-  // Consulta la ficha de la mascota mediante el DAO existente.
+  // Consulta la ficha mediante el DAO existente.
   const cargarFicha = useCallback(async () => {
-    if (!numeroHistoria) {
+    const historia = Array.isArray(numeroHistoria)
+      ? numeroHistoria[0]
+      : numeroHistoria;
+
+    if (!historia) {
       setError('No se recibió el número de historia clínica.');
       setCargando(false);
       return;
@@ -208,9 +213,7 @@ export default function FichaMascotaScreen() {
       setCargando(true);
       setError('');
 
-      const resultado = await consultarMascotaPorId(
-        String(numeroHistoria)
-      );
+      const resultado = await consultarMascotaPorId(String(historia));
 
       if (!resultado) {
         setMascota(null);
@@ -246,12 +249,11 @@ export default function FichaMascotaScreen() {
   };
 
   // Obtiene los datos del propietario y el estado de la mascota.
-  const propietario = mascota?.propietarios;
   const nombrePropietario = obtenerNombrePropietario(mascota);
   const estado = String(mascota?.estado || 'Activo');
   const inactiva = estado.toLowerCase() === 'inactivo';
 
-  // Regresa a la pantalla anterior; si no hay historial, abre la lista.
+  // Regresa a la pantalla anterior o abre la lista de mascotas.
   const volver = () => {
     if (router.canGoBack()) {
       router.back();
@@ -300,6 +302,25 @@ export default function FichaMascotaScreen() {
       params: {
         propietarioId: String(mascota.propietario_id),
         numeroHistoria: String(mascota.numero_historia),
+      },
+    });
+  };
+
+  // RF20: abre el historial de atenciones de esta mascota.
+  const abrirHistorial = () => {
+    if (!mascota?.numero_historia) {
+      Alert.alert(
+        'Historial no disponible',
+        'La mascota no tiene número de historia clínica.'
+      );
+      return;
+    }
+
+    router.push({
+      pathname: '/historiaMascota',
+      params: {
+        numeroHistoria: String(mascota.numero_historia),
+        nombre: String(mascota.nombre || ''),
       },
     });
   };
@@ -460,7 +481,7 @@ export default function FichaMascotaScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Aviso de registro exitoso, si se recibió el parámetro. */}
+        {/* Aviso de registro exitoso. */}
         {exito === '1' && (
           <View style={styles.alertaExito}>
             <Text style={styles.textoExito}>
@@ -519,6 +540,31 @@ export default function FichaMascotaScreen() {
             </View>
           </View>
         </View>
+
+        {/* RF20: acceso al historial de atenciones de la mascota. */}
+        <TouchableOpacity
+          style={styles.botonHistorial}
+          onPress={abrirHistorial}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Consultar historial de atenciones"
+        >
+          <View style={styles.contenidoBotonHistorial}>
+            <Text style={styles.iconoHistorial}>▤</Text>
+
+            <View style={styles.textosBotonHistorial}>
+              <Text style={styles.tituloBotonHistorial}>
+                Historial de atenciones
+              </Text>
+
+              <Text style={styles.subtituloBotonHistorial}>
+                Consultar las atenciones registradas de esta mascota
+              </Text>
+            </View>
+
+            <Text style={styles.flechaHistorial}>›</Text>
+          </View>
+        </TouchableOpacity>
 
         {/* Información general de la mascota. */}
         <Seccion titulo="INFORMACIÓN GENERAL">
@@ -582,7 +628,7 @@ export default function FichaMascotaScreen() {
           </Text>
         </Seccion>
 
-        {/* Propietario: solo nombre, estado de registro y acceso a su ficha. */}
+        {/* Propietario: resumen y acceso a su ficha. */}
         <Seccion titulo="PROPIETARIO">
           <View style={styles.propietarioEncabezado}>
             <View style={styles.iconoPropietario}>
@@ -621,7 +667,7 @@ export default function FichaMascotaScreen() {
           Información correspondiente al registro de la mascota.
         </Text>
 
-        {/* Espacio en blanco al final para que no quede pegado al borde. */}
+        {/* Espacio al final para que el contenido no quede pegado al borde. */}
         <View style={styles.espacioFinal} />
       </ScrollView>
 
@@ -861,7 +907,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // Distribución de la información resumida del propietario.
   propietarioEncabezado: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -900,7 +945,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  // Enlace para navegar a la ficha completa del propietario.
   botonVerPropietario: {
     alignSelf: 'flex-start',
     paddingVertical: 12,
@@ -992,5 +1036,57 @@ const styles = StyleSheet.create({
   textoBotonSecundario: {
     color: C.primario,
     fontWeight: '700',
+  },
+
+  // RF20: botón para consultar el historial clínico.
+  botonHistorial: {
+    backgroundColor: C.blanco,
+    borderWidth: 1,
+    borderColor: C.borde,
+    borderRadius: 14,
+    paddingHorizontal: 15,
+    paddingVertical: 16,
+    marginBottom: 22,
+  },
+
+  contenidoBotonHistorial: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  iconoHistorial: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: C.verdeFondo,
+    color: C.primario,
+    fontSize: 26,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    overflow: 'hidden',
+  },
+
+  textosBotonHistorial: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  tituloBotonHistorial: {
+    color: C.texto,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+
+  subtituloBotonHistorial: {
+    color: C.secundario,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+
+  flechaHistorial: {
+    color: C.primario,
+    fontSize: 28,
   },
 });

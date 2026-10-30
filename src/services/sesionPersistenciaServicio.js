@@ -5,7 +5,6 @@
 
 // Limpiar la sesión local cuando deja de ser válida.
 import { logger } from '../utils/logger';
-
 async function invalidarSesionLocal(auth) {
   try {
     await auth.signOut({ scope: 'local' });

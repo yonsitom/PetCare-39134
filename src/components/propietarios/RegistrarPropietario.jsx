@@ -12,10 +12,11 @@ import {
 } from 'react-native';
 
 import FormularioPropietario from './formularioPropietario';
-import { registrarPropietario } from '../../dao/propietarioDAO';
 import { logger } from '../../utils/logger';
-
-const C = {
+import {
+  registrarPropietario,
+  validarDisponibilidadPropietario,
+} from '../../dao/propietarioDAO';const C = {
   primario: '#187C72',
   texto: '#253746',
   secundario: '#64748B',
@@ -134,11 +135,58 @@ export default function RegistrarPropietario({
     return true;
   };
 
-  const revisarDatos = () => {
-    if (validarFormulario()) {
-      setModalConfirmacion(true);
+  const revisarDatos = async () => {
+  if (guardando || !validarFormulario()) return;
+
+  setGuardando(true);
+  setErrores({});
+  setCampoConError('');
+  setMensajeGeneral('');
+
+  try {
+    const datosLimpios = {
+      ...datos,
+      nombre: datos.nombre.trim(),
+      apellido: datos.apellido.trim(),
+      documento_identidad: datos.documento_identidad.trim(),
+      telefono: datos.telefono.trim().replace(/\s+/g, ''),
+      correo: datos.correo.trim().toLowerCase(),
+      direccion: datos.direccion.trim(),
+      observaciones: datos.observaciones.trim(),
+    };
+
+    await validarDisponibilidadPropietario(datosLimpios);
+
+    setModalConfirmacion(true);
+  } catch (error) {
+    if (error?.code === 'DUPLICADO_DNI') {
+      const mensaje =
+        'El DNI ya está registrado. Ingrese otro DNI antes de continuar.';
+
+      setErrores((actuales) => ({
+        ...actuales,
+        documento_identidad: mensaje,
+      }));
+      setCampoConError('documento_identidad');
+    } else if (error?.code === 'DUPLICADO_CORREO') {
+      const mensaje =
+        'El correo electrónico ya se encuentra registrado.';
+
+      setErrores((actuales) => ({
+        ...actuales,
+        correo: mensaje,
+      }));
+      setCampoConError('correo');
+    } else {
+      setMensajeGeneral(
+        'No se pudieron verificar los datos. Intente nuevamente.'
+      );
+      logger.error('Error al validar duplicados:', error);
     }
-  };
+  } finally {
+    setGuardando(false);
+  }
+};
 
   // Convierte errores de Supabase/DAO en mensajes para el usuario.
   const obtenerMensajeError = (error) => {
@@ -201,13 +249,16 @@ export default function RegistrarPropietario({
         const mensaje =
           'El DNI ya está registrado. Ingrese otro DNI antes de continuar.';
 
-        setErrores((actuales) => ({
-          ...actuales,
-          documento_identidad: mensaje,
-        }));
+setErrores((actuales) => ({
+  ...actuales,
+  documento_identidad: mensaje,
+}));
 
-        setCampoConError('documento_identidad');
-        setMensajeGeneral(mensaje);
+setCampoConError('documento_identidad');
+
+// El error ya se mostrará debajo del campo DNI.
+setMensajeGeneral('');
+
       } else if (
         error?.code === 'DUPLICADO_CORREO' ||
         error?.campo === 'correo'
@@ -215,13 +266,15 @@ export default function RegistrarPropietario({
         const mensaje =
           'El correo electrónico ya se encuentra registrado';
 
-        setErrores((actuales) => ({
-          ...actuales,
-          correo: mensaje,
-        }));
+setErrores((actuales) => ({
+  ...actuales,
+  correo: mensaje,
+}));
 
-        setCampoConError('correo');
-        setMensajeGeneral(mensaje);
+setCampoConError('correo');
+
+// El error ya se mostrará debajo del campo correo.
+setMensajeGeneral('');
       } else {
         setMensajeGeneral(obtenerMensajeError(error));
       }

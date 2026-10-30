@@ -2,18 +2,17 @@
 /*
  * Archivo: src/app/mascotas/editarMascota.jsx
  *
- * Funciones:
- * - Cargar el perfil del usuario autenticado.
- * - Consultar los datos de la mascota.
- * - Editar los datos de la mascota.
- * - Solicitar confirmación antes de guardar.
- * - Actualizar la información mediante el DAO.
- * - Mostrar mensajes de error y éxito.
+ * RF18 - Modificar la información registrada de una mascota.
  *
- * Diseño:
- * - Estilo visual coherente con Nueva mascota.
- * - Sin botón inferior para volver a la ficha.
- * - Espacio en blanco debajo del formulario.
+ * Responsabilidades:
+ * - Cargar el perfil y los datos de la mascota.
+ * - Solicitar confirmación antes de guardar.
+ * - Actualizar mediante el DAO.
+ * - Mostrar mensajes funcionales sin exponer errores técnicos.
+ * - Descartar cambios al cancelar.
+ *
+ * Arquitectura:
+ * Vista (React Native) -> DAO -> Supabase.
  */
 
 import React, {
@@ -43,16 +42,37 @@ import {
 import { supabase } from '../../services/supabase';
 
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
-
 import FormularioMascota from '../../components/mascotas/FormularioMascota';
-
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 
 import {
   actualizarMascota,
   consultarMascotaPorId,
 } from '../../dao/mascotaDAO';
+
+import {
+  validarDatosEdicionMascota,
+  obtenerMensajeErrorEdicionMascota,
+} from '../../utils/validacionesEdicionMascota';
 import { logger } from '../../utils/logger';
+
+// ======================================================
+// MENSAJES RF18
+// ======================================================
+
+const MENSAJES = {
+  camposObligatorios:
+    'Complete los campos obligatorios para continuar.',
+
+  datosInvalidos:
+    'Verifique los datos ingresados e inténtelo nuevamente.',
+
+  exito:
+    'Los datos de la mascota fueron actualizados correctamente.',
+
+  errorActualizacion:
+    'No se pudieron guardar los cambios. Intente nuevamente.',
+};
 
 // ======================================================
 // PALETA VISUAL PETCARE
@@ -78,34 +98,31 @@ const C = {
 // ======================================================
 
 export default function EditarMascotaScreen() {
-  // Número de historia recibido desde la ficha.
   const { numeroHistoria } = useLocalSearchParams();
 
-  // Información de la mascota.
+  const historia =
+    Array.isArray(numeroHistoria)
+      ? numeroHistoria[0]
+      : numeroHistoria;
+
   const [mascota, setMascota] = useState(null);
 
-  // Estados de carga y guardado.
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
 
-  // Mensajes de la pantalla.
   const [error, setError] = useState('');
   const [mensajeExito, setMensajeExito] = useState('');
 
-  // Datos que esperan la confirmación del usuario.
   const [datosPendientes, setDatosPendientes] = useState(null);
-
-  // Visibilidad del modal de confirmación.
   const [modalConfirmacionVisible, setModalConfirmacionVisible] =
     useState(false);
 
-  // Estados del menú lateral.
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [nombreUsuario, setNombreUsuario] = useState('Usuario');
   const [rolUsuario, setRolUsuario] = useState('');
 
   // ====================================================
-  // 1. CARGAR PERFIL DEL USUARIO
+  // 1. CARGAR PERFIL
   // ====================================================
 
   useEffect(() => {
@@ -131,7 +148,7 @@ export default function EditarMascotaScreen() {
         if (errorPerfil) {
           logger.error(
             'Error al consultar el perfil:',
-            errorPerfil.message
+            errorPerfil
           );
           return;
         }
@@ -153,11 +170,11 @@ export default function EditarMascotaScreen() {
   }, []);
 
   // ====================================================
-  // 2. CARGAR DATOS DE LA MASCOTA
+  // 2. CARGAR MASCOTA
   // ====================================================
 
   const cargarMascota = useCallback(async () => {
-    if (!numeroHistoria) {
+    if (!historia) {
       setMascota(null);
       setError('No se recibió el número de historia clínica.');
       setCargando(false);
@@ -169,9 +186,7 @@ export default function EditarMascotaScreen() {
       setError('');
       setMensajeExito('');
 
-      const resultado = await consultarMascotaPorId(
-        String(numeroHistoria)
-      );
+      const resultado = await consultarMascotaPorId(historia);
 
       setMascota(resultado || null);
 
@@ -189,9 +204,8 @@ export default function EditarMascotaScreen() {
     } finally {
       setCargando(false);
     }
-  }, [numeroHistoria]);
+  }, [historia]);
 
-  // Recargar los datos cuando la pantalla obtiene el foco.
   useFocusEffect(
     useCallback(() => {
       cargarMascota();
@@ -199,7 +213,7 @@ export default function EditarMascotaScreen() {
   );
 
   // ====================================================
-  // 3. VOLVER A LA PANTALLA ANTERIOR
+  // 3. VOLVER A LA FICHA O PANTALLA ANTERIOR
   // ====================================================
 
   function volver() {
@@ -212,11 +226,11 @@ export default function EditarMascotaScreen() {
       return;
     }
 
-    if (numeroHistoria) {
+    if (historia) {
       router.replace({
         pathname: '/mascotas/fichaMascota',
         params: {
-          numeroHistoria: String(numeroHistoria),
+          numeroHistoria: historia,
         },
       });
       return;
@@ -226,18 +240,51 @@ export default function EditarMascotaScreen() {
   }
 
   // ====================================================
-  // 4. SOLICITAR CONFIRMACIÓN
+  // 4. CANCELAR EDICIÓN
+  // CP04: descartar datos sin guardarlos
+  // ====================================================
+
+  function cancelarEdicion() {
+    if (guardando) {
+      return;
+    }
+
+    setModalConfirmacionVisible(false);
+    setDatosPendientes(null);
+    setError('');
+    setMensajeExito('');
+
+    // No se llama al DAO.
+    // Al salir, la base de datos conserva los datos originales.
+    volver();
+  }
+
+  // ====================================================
+  // 5. SOLICITAR CONFIRMACIÓN
   // ====================================================
 
   function solicitarConfirmacion(datos) {
+    if (guardando) {
+      return;
+    }
+
     setError('');
     setMensajeExito('');
+
+    // Validación específica de RF18 antes de abrir el modal.
+    const resultado = validarDatosEdicionMascota(datos);
+
+    if (!resultado.valido) {
+      setError(resultado.mensaje);
+      return;
+    }
+
     setDatosPendientes(datos);
     setModalConfirmacionVisible(true);
   }
 
   // ====================================================
-  // 5. CANCELAR CONFIRMACIÓN
+  // 6. CANCELAR SOLO EL MODAL
   // ====================================================
 
   function cancelarConfirmacion() {
@@ -250,17 +297,17 @@ export default function EditarMascotaScreen() {
   }
 
   // ====================================================
-  // 6. ACTUALIZAR MASCOTA EN SUPABASE
+  // 7. ACTUALIZAR MASCOTA
+  // CP01 y CP05
   // ====================================================
 
   async function confirmarGuardado() {
-    if (
-      guardando ||
-      !datosPendientes ||
-      !numeroHistoria
-    ) {
+    if (guardando || !datosPendientes || !historia) {
       return;
     }
+
+    // Copiar los datos antes de iniciar la petición.
+    const datosParaGuardar = { ...datosPendientes };
 
     try {
       setGuardando(true);
@@ -268,48 +315,42 @@ export default function EditarMascotaScreen() {
       setMensajeExito('');
       setModalConfirmacionVisible(false);
 
-      // Actualizar los datos de la mascota mediante el DAO.
-      await actualizarMascota(
-        String(numeroHistoria),
-        datosPendientes
+      // El DAO es responsable de actualizar Supabase.
+      const mascotaActualizada = await actualizarMascota(
+        historia,
+        datosParaGuardar
       );
 
-      // Consultar nuevamente los datos guardados.
-      const mascotaActualizada = await consultarMascotaPorId(
-        String(numeroHistoria)
-      );
-
+      // La operación de actualización ya terminó correctamente.
+      // No hacemos depender el éxito de una segunda consulta.
       if (mascotaActualizada) {
         setMascota(mascotaActualizada);
       } else {
-        // Mantener los datos actualizados como respaldo.
         setMascota((anterior) => ({
           ...anterior,
-          ...datosPendientes,
+          ...datosParaGuardar,
         }));
       }
 
       setDatosPendientes(null);
 
-      // Mostrar el mensaje únicamente si el guardado funcionó.
-      setMensajeExito(
-        'Los cambios de la mascota se guardaron correctamente.'
-      );
+      setMensajeExito(MENSAJES.exito);
     } catch (err) {
+      // El detalle técnico solo queda en los registros de desarrollo.
       logger.error(
-        'Error al actualizar la mascota:',
+        'Error técnico al actualizar la mascota:',
         err
       );
 
-      const mensaje =
-        err?.message ||
-        'No se pudieron guardar los cambios. Inténtalo nuevamente.';
+      // Mantener el estado original de la mascota en pantalla.
+      // No aplicar datosPendientes cuando falla la actualización.
+      const mensaje = obtenerMensajeErrorEdicionMascota(err);
 
       setError(mensaje);
 
       Alert.alert(
         'No se pudo actualizar',
-        mensaje
+        MENSAJES.errorActualizacion
       );
     } finally {
       setGuardando(false);
@@ -317,7 +358,7 @@ export default function EditarMascotaScreen() {
   }
 
   // ====================================================
-  // 7. CERRAR SESIÓN
+  // 8. CERRAR SESIÓN
   // ====================================================
 
   async function cerrarSesion() {
@@ -346,7 +387,7 @@ export default function EditarMascotaScreen() {
   }
 
   // ====================================================
-  // 8. INTERFAZ PRINCIPAL
+  // 9. INTERFAZ
   // ====================================================
 
   return (
@@ -356,7 +397,6 @@ export default function EditarMascotaScreen() {
         backgroundColor={C.blanco}
       />
 
-      {/* Encabezado compartido de PetCare. */}
       <EncabezadoPetCare
         titulo="PetCare"
         onAbrirMenu={() => setMenuAbierto(true)}
@@ -368,7 +408,6 @@ export default function EditarMascotaScreen() {
         }
       />
 
-      {/* Estado de carga inicial. */}
       {cargando ? (
         <View style={styles.estadoCentrado}>
           <ActivityIndicator
@@ -381,7 +420,6 @@ export default function EditarMascotaScreen() {
           </Text>
         </View>
       ) : !mascota ? (
-        // Mensaje cuando no se encuentra la mascota.
         <View style={styles.contenido}>
           <View style={styles.encabezadoPagina}>
             <TouchableOpacity
@@ -411,7 +449,6 @@ export default function EditarMascotaScreen() {
 
           <View style={styles.alertaError}>
             <Text style={styles.iconoError}>!</Text>
-
             <Text style={styles.textoError}>
               {error || 'Mascota no encontrada.'}
             </Text>
@@ -428,9 +465,7 @@ export default function EditarMascotaScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-        // Pantalla principal de edición.
         <View style={styles.contenido}>
-          {/* Título y botón para volver. */}
           <View style={styles.encabezadoPagina}>
             <TouchableOpacity
               style={styles.botonVolver}
@@ -458,24 +493,19 @@ export default function EditarMascotaScreen() {
             </View>
           </View>
 
-          {/* Aviso de error. */}
           {!!error && (
             <View style={styles.alertaError}>
               <Text style={styles.iconoError}>!</Text>
-
               <Text style={styles.textoError}>
                 {error}
               </Text>
             </View>
           )}
 
-          {/* Aviso de actualización exitosa. */}
           {!!mensajeExito && (
             <View style={styles.alertaExito}>
               <View style={styles.iconoExito}>
-                <Text style={styles.textoIconoExito}>
-                  ✓
-                </Text>
+                <Text style={styles.textoIconoExito}>✓</Text>
               </View>
 
               <View style={styles.contenidoExito}>
@@ -490,25 +520,21 @@ export default function EditarMascotaScreen() {
             </View>
           )}
 
-          {/* Formulario original en modo edición. */}
           <View style={styles.areaFormulario}>
             <FormularioMascota
               modo="edicion"
               datosIniciales={mascota}
               onContinuar={solicitarConfirmacion}
+              onCancelar={cancelarEdicion}
               cargando={guardando}
             />
           </View>
 
-          {/*
-            Fila vacía para dejar un espacio visual
-            debajo del formulario.
-          */}
           <View style={styles.filaBlanca} />
         </View>
       )}
 
-      {/* Modal de confirmación de cambios. */}
+      {/* Modal de confirmación de actualización */}
       <Modal
         visible={modalConfirmacionVisible}
         transparent
@@ -557,7 +583,6 @@ export default function EditarMascotaScreen() {
         </View>
       </Modal>
 
-      {/* Indicador de carga durante la actualización. */}
       {guardando && (
         <View style={styles.capaCarga}>
           <View style={styles.tarjetaCarga}>
@@ -573,7 +598,6 @@ export default function EditarMascotaScreen() {
         </View>
       )}
 
-      {/* Menú lateral compartido. */}
       <MenuLateralDerecho
         visible={menuAbierto}
         onCerrar={() => setMenuAbierto(false)}
@@ -586,7 +610,7 @@ export default function EditarMascotaScreen() {
 }
 
 // ======================================================
-// 9. ESTILOS DE LA PANTALLA
+// 10. ESTILOS
 // ======================================================
 
 const styles = StyleSheet.create({
@@ -620,12 +644,8 @@ const styles = StyleSheet.create({
     borderColor: C.borde,
     borderRadius: 13,
     marginRight: 12,
-
     shadowColor: '#173B36',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 5,
     elevation: 2,
@@ -665,7 +685,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 
-  // Área del formulario con fondo blanco y bordes redondeados.
   areaFormulario: {
     flex: 1,
     minHeight: 0,
@@ -677,7 +696,6 @@ const styles = StyleSheet.create({
     borderColor: C.borde,
   },
 
-  // Fila blanca debajo del formulario.
   filaBlanca: {
     height: 25,
     width: '100%',
@@ -782,7 +800,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Fondo del modal de confirmación.
   fondoModal: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.48)',
@@ -872,7 +889,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Capa de carga durante el guardado.
   capaCarga: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(255,255,255,0.78)',

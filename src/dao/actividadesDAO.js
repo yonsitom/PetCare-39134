@@ -1,3 +1,4 @@
+
 /**
  * ============================================================
  * PETCARE — DAO DE ACTIVIDADES
@@ -19,6 +20,9 @@
  * RF24: consultar actividades de una atención.
  * RF25: cambiar el estado y finalizar automáticamente la atención.
  * RF26: comprobar si una atención está lista para finalizar.
+ * RF29: registrar actividad.
+ * RF43: suscripción a cambios en tiempo real.
+ * RF53: registrar posología.
  *
  * IMPORTANTE:
  * - Una atención sin actividades no se finaliza automáticamente.
@@ -29,10 +33,10 @@
  */
 
 import { supabase } from '../services/supabase';
+import { logger } from '../utils/logger';
 
 export const ESTADOS_ACTIVIDAD = [
   'Pendiente',
- 
   'Completada',
   'No realizada',
 ];
@@ -95,7 +99,6 @@ function obtenerTiempo(fecha) {
  *
  * Si estado es null, devuelve todas las actividades no eliminadas.
  * Los estados consultables son Pendiente, Completada y No realizada.
-
  */
 export async function consultarActividadesPorEstado(estado = null) {
   if (
@@ -124,7 +127,7 @@ export async function consultarActividadesPorEstado(estado = null) {
     const { data, error } = await consulta;
 
     if (error) {
-      console.error(
+      logger.error(
         'RF10: error consultando actividades:',
         error.message
       );
@@ -153,7 +156,7 @@ export async function consultarActividadesPorEstado(estado = null) {
       throw error;
     }
 
-    console.error(
+    logger.error(
       'RF10: error inesperado:',
       error?.message ?? error
     );
@@ -165,9 +168,8 @@ export async function consultarActividadesPorEstado(estado = null) {
 /**
  * RF24: consultar actividades de una atención específica.
  *
- * No se usa .order() en esta consulta para mantener compatibilidad
+ * El orden se aplica localmente para mantener compatibilidad
  * con los simuladores de Supabase de las pruebas.
- * El orden se aplica localmente.
  */
 export async function consultarActividadesPorAtencion(atencionId) {
   validarIdentificador(
@@ -182,7 +184,7 @@ export async function consultarActividadesPorAtencion(atencionId) {
     .eq('eliminado', false);
 
   if (error) {
-    console.error(
+    logger.error(
       'RF24: error consultando actividades de la atención:',
       error.message
     );
@@ -228,7 +230,7 @@ export async function validarQueNoExistaActividadAbierta(
     .limit(1);
 
   if (error) {
-    console.error(
+    logger.error(
       'Error verificando atenciones activas:',
       error.message
     );
@@ -279,7 +281,6 @@ export async function verificarAtencionListaParaFinalizar(
     totalActividades: lista.length,
     pendientes: lista.filter(
       (actividad) => actividad.estado === 'Pendiente'
-   
     ).length,
     completadas: lista.filter(
       (actividad) => actividad.estado === 'Completada'
@@ -306,7 +307,6 @@ export async function finalizarAtencionSiCorresponde(atencionId) {
     'No se indicó la atención que desea finalizar.'
   );
 
-  // Primero comprobar el estado actual de la atención.
   const { data: atencion, error: errorAtencion } = await supabase
     .from('atenciones')
     .select('atencion_id, estado, fecha_fin')
@@ -314,7 +314,7 @@ export async function finalizarAtencionSiCorresponde(atencionId) {
     .maybeSingle();
 
   if (errorAtencion) {
-    console.error(
+    logger.error(
       'RF25: error verificando la atención:',
       errorAtencion.message
     );
@@ -337,13 +337,11 @@ export async function finalizarAtencionSiCorresponde(atencionId) {
       fecha_fin: atencion.fecha_fin ?? null,
       totalActividades: 0,
       pendientes: 0,
-      
       completadas: 0,
       noRealizadas: 0,
     };
   }
 
-  // Una atención que no está Activa no se debe finalizar aquí.
   if (atencion.estado !== 'Activa') {
     return {
       finalizada: false,
@@ -351,7 +349,6 @@ export async function finalizarAtencionSiCorresponde(atencionId) {
       estado: atencion.estado,
       totalActividades: 0,
       pendientes: 0,
-     
       completadas: 0,
       noRealizadas: 0,
     };
@@ -360,8 +357,6 @@ export async function finalizarAtencionSiCorresponde(atencionId) {
   const resultado =
     await verificarAtencionListaParaFinalizar(atencionId);
 
-  // CP03, CP04 y CP05: no finalizar si hay actividades abiertas
-  // o si no hay ninguna actividad vigente.
   if (!resultado.listaParaFinalizar) {
     return {
       finalizada: false,
@@ -373,28 +368,30 @@ export async function finalizarAtencionSiCorresponde(atencionId) {
 
   let fechaFin;
 
-try {
-  fechaFin = new Date().toISOString();
-} catch (error) {
-  throw new Error(
-    'No se pudo obtener la fecha y hora de finalización.'
-  );
-}
+  try {
+    fechaFin = new Date().toISOString();
+  } catch (error) {
+    throw new Error(
+      'No se pudo obtener la fecha y hora de finalización.'
+    );
+  }
 
-  const { data: atencionActualizada, error: errorActualizacion } =
-    await supabase
-      .from('atenciones')
-      .update({
-        estado: 'Finalizada',
-        fecha_fin: fechaFin,
-      })
-      .eq('atencion_id', atencionId)
-      .eq('estado', 'Activa')
-      .select('atencion_id, estado, fecha_fin')
-      .maybeSingle();
+  const {
+    data: atencionActualizada,
+    error: errorActualizacion,
+  } = await supabase
+    .from('atenciones')
+    .update({
+      estado: 'Finalizada',
+      fecha_fin: fechaFin,
+    })
+    .eq('atencion_id', atencionId)
+    .eq('estado', 'Activa')
+    .select('atencion_id, estado, fecha_fin')
+    .maybeSingle();
 
   if (errorActualizacion) {
-    console.error(
+    logger.error(
       'RF25: error finalizando atención:',
       errorActualizacion.message
     );
@@ -404,8 +401,6 @@ try {
     );
   }
 
-  // Evita afirmar que se actualizó si la condición estado = Activa
-  // ya no coincidía al momento de ejecutar la actualización.
   if (!atencionActualizada) {
     return {
       finalizada: false,
@@ -466,7 +461,7 @@ export async function actualizarEstadoActividad(
     .maybeSingle();
 
   if (errorActividad) {
-    console.error(
+    logger.error(
       'RF25: error verificando actividad:',
       errorActividad.message
     );
@@ -496,7 +491,7 @@ export async function actualizarEstadoActividad(
       .maybeSingle();
 
   if (errorEstadoAtencion) {
-    console.error(
+    logger.error(
       'RF25: error verificando estado de atención:',
       errorEstadoAtencion.message
     );
@@ -533,7 +528,7 @@ export async function actualizarEstadoActividad(
     .maybeSingle();
 
   if (errorActualizacion) {
-    console.error(
+    logger.error(
       'RF25: error actualizando actividad:',
       errorActualizacion.message
     );
@@ -553,7 +548,7 @@ export async function actualizarEstadoActividad(
     resultadoFinalizacion =
       await finalizarAtencionSiCorresponde(actividad.atencion_id);
   } catch (error) {
-    console.error(
+    logger.error(
       'RF25: la actividad se actualizó, pero no se pudo comprobar el cierre:',
       error?.message ?? error
     );
@@ -587,7 +582,7 @@ export async function consultarEstadoActividad(actividadId) {
     .maybeSingle();
 
   if (error) {
-    console.error(
+    logger.error(
       'Error consultando estado de actividad:',
       error.message
     );
@@ -607,20 +602,32 @@ export async function consultarEstadoActividad(actividadId) {
 }
 
 /**
- * RF29: registrar una nueva actividad.
+ * RF29: registrar una nueva actividad y sus datos específicos.
  */
 export async function registrarActividad(datos) {
   if (!datos || typeof datos !== 'object') {
     throw new Error('Debes proporcionar los datos de la actividad.');
   }
 
+  validarIdentificador(
+    datos.atencion_id,
+    'Debes seleccionar una atención.'
+  );
+
+  validarIdentificador(
+    datos.tipo_id,
+    'Debes seleccionar el tipo de actividad.'
+  );
+
   const registro = {
     atencion_id: datos.atencion_id,
     tipo_id: datos.tipo_id,
+    tipo: datos.tipo,
     fecha_prevista: datos.fecha_prevista,
     observaciones: String(datos.observaciones ?? '').trim(),
     estado: 'Pendiente',
     eliminado: false,
+    detalle: datos.detalle ?? {},
   };
 
   const { data, error } = await supabase
@@ -630,9 +637,374 @@ export async function registrarActividad(datos) {
     .single();
 
   if (error) {
-    console.error('RF29: error al registrar actividad:', error);
+    logger.error('Error al registrar actividad:', error);
     throw error;
   }
 
   return data;
 }
+
+/**
+ * ============================================================
+ * RF53: REGISTRAR POSOLOGÍA
+ * ============================================================
+ *
+ * Registra una actividad de medicación y todos sus medicamentos
+ * mediante una función PostgreSQL transaccional.
+ *
+ * La duración y condición de ingesta se almacenan en detalle
+ * (JSONB) de la actividad.
+ */
+export async function registrarPosologiaActividad(datos) {
+  if (!datos || typeof datos !== 'object') {
+    throw new Error('Debes proporcionar los datos de la posología.');
+  }
+
+  validarIdentificador(
+    datos.atencion_id,
+    'Debes seleccionar una atención.'
+  );
+
+  validarIdentificador(
+    datos.tipo_id,
+    'Debes seleccionar el tipo de actividad.'
+  );
+
+  if (
+    !Array.isArray(datos.medicamentos) ||
+    datos.medicamentos.length === 0
+  ) {
+    throw new Error('Seleccione un medicamento');
+  }
+
+  const medicamentos = datos.medicamentos.map((medicamento) => ({
+    medicamento_id: medicamento.medicamento_id,
+    dosis: String(medicamento.dosis ?? '').trim(),
+    frecuencia: String(medicamento.frecuencia ?? '').trim(),
+    via_administracion: String(
+      medicamento.via_administracion ?? ''
+    ).trim(),
+  }));
+
+  const medicamentoIds = medicamentos.map(
+    (medicamento) => String(medicamento.medicamento_id ?? '')
+  );
+
+  if (new Set(medicamentoIds).size !== medicamentoIds.length) {
+    throw new Error(
+      'Este medicamento ya fue agregado a la actividad'
+    );
+  }
+
+  const { data, error } = await supabase.rpc(
+    'registrar_posologia_actividad',
+    {
+      p_atencion_id: datos.atencion_id,
+      p_tipo_id: datos.tipo_id,
+      p_fecha_prevista: datos.fecha_prevista,
+      p_observaciones: String(datos.observaciones ?? '').trim(),
+      p_detalle: {
+        ...(datos.detalle ?? {}),
+        duracion: datos.duracion,
+        condicion_ingesta: datos.condicion_ingesta,
+      },
+      p_medicamentos: medicamentos,
+    }
+  );
+
+  if (error) {
+    logger.error('RF53: error registrando posología:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+/**
+ * ============================================================
+ * RF43: SUSCRIPCIÓN A CAMBIOS EN TIEMPO REAL
+ * ============================================================
+ *
+ * Escucha cambios en:
+ * - actividades: INSERT, UPDATE y DELETE.
+ * - atenciones: INSERT, UPDATE y DELETE.
+ *
+ * Devuelve:
+ * - channel: canal Realtime de Supabase.
+ * - ready: promesa que confirma la conexión.
+ *
+ * Para identificar correctamente los DELETE se requiere
+ * REPLICA IDENTITY FULL en ambas tablas.
+ */
+
+/**
+ * RF43: crear una suscripción Realtime para una atención.
+ *
+ * @param {number|string} atencionId
+ * @param {Function} callback
+ * @returns {{ channel: Object, ready: Promise }}
+ */
+export function suscribirCambiosAtencion(
+  atencionId,
+  callback
+) {
+  validarIdentificador(
+    atencionId,
+    'Debe indicar una atención válida para activar el seguimiento.'
+  );
+
+  if (typeof callback !== 'function') {
+    throw new Error(
+      'Debe proporcionar una función para recibir las actualizaciones.'
+    );
+  }
+
+  const identificador = String(atencionId).trim();
+
+  const canal = supabase.channel(
+    `seguimiento-atencion-${identificador}`
+  );
+
+  /**
+   * Entrega el evento al servicio RF43.
+   */
+  function procesarEvento(payload, tabla, tipoEvento) {
+    try {
+      callback({
+        ...payload,
+        table: tabla,
+        eventType: tipoEvento,
+      });
+    } catch (error) {
+      logger.error(
+        `RF43: error procesando evento ${tipoEvento} de ${tabla}:`,
+        error
+      );
+    }
+  }
+
+  // ACTIVIDADES: INSERT.
+  canal.on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'actividades',
+      filter: `atencion_id=eq.${identificador}`,
+    },
+    (payload) => {
+      procesarEvento(payload, 'actividades', 'INSERT');
+    }
+  );
+
+  // ACTIVIDADES: UPDATE.
+  canal.on(
+    'postgres_changes',
+    {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'actividades',
+      filter: `atencion_id=eq.${identificador}`,
+    },
+    (payload) => {
+      procesarEvento(payload, 'actividades', 'UPDATE');
+    }
+  );
+
+  // ACTIVIDADES: DELETE.
+  // Se filtra localmente porque Postgres Changes no admite
+  // el filtro habitual para eventos DELETE.
+  canal.on(
+    'postgres_changes',
+    {
+      event: 'DELETE',
+      schema: 'public',
+      table: 'actividades',
+    },
+    (payload) => {
+      const registro = payload?.old;
+
+      if (
+        String(registro?.atencion_id) === identificador
+      ) {
+        procesarEvento(payload, 'actividades', 'DELETE');
+      }
+    }
+  );
+
+  // ATENCIONES: INSERT.
+  canal.on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'atenciones',
+      filter: `atencion_id=eq.${identificador}`,
+    },
+    (payload) => {
+      procesarEvento(payload, 'atenciones', 'INSERT');
+    }
+  );
+
+  // ATENCIONES: UPDATE.
+  canal.on(
+    'postgres_changes',
+    {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'atenciones',
+      filter: `atencion_id=eq.${identificador}`,
+    },
+    (payload) => {
+      procesarEvento(payload, 'atenciones', 'UPDATE');
+    }
+  );
+
+  // ATENCIONES: DELETE.
+  canal.on(
+    'postgres_changes',
+    {
+      event: 'DELETE',
+      schema: 'public',
+      table: 'atenciones',
+    },
+    (payload) => {
+      const registro = payload?.old;
+
+      if (
+        String(registro?.atencion_id) === identificador
+      ) {
+        procesarEvento(payload, 'atenciones', 'DELETE');
+      }
+    }
+  );
+
+  // Confirmación de conexión Realtime.
+  let resolverReady;
+  let rechazarReady;
+  let conexionFinalizada = false;
+
+  const ready = new Promise((resolve, reject) => {
+    resolverReady = resolve;
+    rechazarReady = reject;
+  });
+
+  canal.subscribe((estado, error) => {
+    if (
+      estado === 'SUBSCRIBED' &&
+      !conexionFinalizada
+    ) {
+      conexionFinalizada = true;
+
+      logger.info(
+        `RF43: Realtime activo para atención ${identificador}.`
+      );
+
+      resolverReady(true);
+      return;
+    }
+
+    if (
+      ['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(estado) &&
+      !conexionFinalizada
+    ) {
+      conexionFinalizada = true;
+
+      logger.error(
+        'RF43: no se pudo establecer la conexión:',
+        error || estado
+      );
+
+      rechazarReady(
+        error ||
+          new Error(
+            `No se pudo establecer Realtime: ${estado}`
+          )
+      );
+    }
+  });
+
+  return {
+    channel: canal,
+    ready,
+  };
+}
+
+/**
+ * RF43: cancelar la suscripción de una atención.
+ *
+ * Acepta el objeto { channel, ready } y también un canal
+ * directo por compatibilidad.
+ */
+export async function cancelarSuscripcionAtencion(
+  suscripcion
+) {
+  if (!suscripcion) {
+    return false;
+  }
+
+  const canal = suscripcion.channel || suscripcion;
+
+  try {
+    const resultado = await supabase.removeChannel(canal);
+
+    return resultado;
+  } catch (error) {
+    logger.error(
+      'RF43: error cancelando la suscripción:',
+      error
+    );
+
+    throw new Error(
+      'No se pudo cerrar la suscripción de seguimiento.'
+    );
+  }
+}
+
+/**
+ * ============================================================
+ * RF11: CONSULTAR ACTIVIDADES PRÓXIMAS A VENCER
+ * ============================================================
+ *
+ * Consulta actividades:
+ * - No eliminadas.
+ * - Con estado Pendiente.
+ * - Con fecha prevista entre la fecha actual y el límite recibido.
+ *
+ * La regla de las 24 horas se calcula en el servicio.
+ */
+export async function consultarActividadesProximasAVencer(
+  fechaActual,
+  fechaLimite
+) {
+  if (!fechaActual || !fechaLimite) {
+    throw new Error(
+      'Debe proporcionar el rango de fechas para consultar los avisos.'
+    );
+  }
+
+  const { data, error } = await supabase
+    .from('actividades')
+    .select('*')
+    .eq('eliminado', false)
+    .eq('estado', 'Pendiente')
+    .gte('fecha_prevista', fechaActual)
+    .lte('fecha_prevista', fechaLimite)
+    .order('fecha_prevista', {
+      ascending: true,
+    });
+
+  if (error) {
+    logger.error(
+      'RF11: error consultando actividades próximas a vencer:',
+      error.message
+    );
+
+    throw new Error(
+      'No se pudo verificar el vencimiento de la actividad'
+    );
+  }
+
+  return Array.isArray(data) ? data : [];
+}
+

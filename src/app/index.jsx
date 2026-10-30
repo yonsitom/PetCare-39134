@@ -1,5 +1,4 @@
-
-import { useCallback, useEffect, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   SafeAreaView,
@@ -12,7 +11,7 @@ import {
 import { router } from 'expo-router';
 
 import FormularioInicioSesion from '../components/autenticacion/FormularioInicioSesion';
-import { crearControladorInicioSesion } from '../services/iniciarSesionControlador';
+import { crearControladorInicioSesion } from '../controllers/autenticacion/iniciarSesionControlador';
 import { iniciarSesionConCorreo } from '../services/autenticacionServicio';
 import { verificarCuentaActiva } from '../services/perfilServicio';
 import { verificarSesionPersistida } from '../services/sesionPersistenciaServicio';
@@ -35,31 +34,28 @@ export default function PantallaInicioSesion() {
 
   const componenteActivo = useRef(false);
   const procesando = useRef(false);
-  const temporizadorRedireccion = useRef(null);
+  const navegando = useRef(false);
   const controladorRef = useRef(null);
 
-  // RF01: crear una sola instancia del controlador por montaje.
+  // RF01: crear una sola instancia del controlador.
   if (!controladorRef.current) {
     controladorRef.current = crearControladorInicioSesion({
       autenticar: iniciarSesionConCorreo,
       verificarCuentaActiva,
       cerrarSesion: async () => {
         const { error } = await supabase.auth.signOut();
-
-        if (error) {
-          throw error;
-        }
+        if (error) throw error;
       },
       limiteIntentos: 5,
     });
   }
 
-  // RF04: validar la sesión persistida y el estado de la cuenta.
+  // RF04: verificar la sesión persistida al abrir la aplicación.
   useEffect(() => {
-    componenteActivo.current = true;
     let cancelado = false;
+    componenteActivo.current = true;
 
-    const comprobarSesionGuardada = async () => {
+    async function comprobarSesionGuardada() {
       try {
         const resultado = await verificarSesionPersistida({
           auth: supabase.auth,
@@ -69,7 +65,9 @@ export default function PantallaInicioSesion() {
         if (cancelado || !componenteActivo.current) return;
 
         if (resultado?.autorizada) {
+          navegando.current = true;
           router.replace('/inicio');
+          return;
         }
       } catch (error) {
         logger.error(
@@ -81,50 +79,57 @@ export default function PantallaInicioSesion() {
           setVerificandoSesion(false);
         }
       }
-    };
+    }
 
     comprobarSesionGuardada();
 
     return () => {
       cancelado = true;
       componenteActivo.current = false;
-
-      if (temporizadorRedireccion.current) {
-        clearTimeout(temporizadorRedireccion.current);
-        temporizadorRedireccion.current = null;
-      }
     };
   }, []);
 
-  // Muestra el mensaje devuelto por el controlador.
   const mostrarMensaje = useCallback((texto, tipo = 'advertencia') => {
     if (!componenteActivo.current) return;
-
     setMensaje(texto || '');
     setTipoMensaje(tipo || 'advertencia');
   }, []);
 
-  // RF01: limpia el mensaje cuando el usuario modifica los campos.
   const limpiarMensaje = useCallback(() => {
     if (inicioExitoso) return;
-
     setMensaje('');
     setTipoMensaje('advertencia');
   }, [inicioExitoso]);
 
-  // RF01: delegar la autenticación y las reglas al controlador.
+  // RF01: autenticar, verificar autorización y navegar al panel.
   const iniciarSesion = async (correo, contrasena) => {
-    if (procesando.current || inicioExitoso) return;
+    if (
+      procesando.current ||
+      navegando.current ||
+      inicioExitoso ||
+      verificandoSesion
+    ) {
+      return;
+    }
 
     procesando.current = true;
     setCargando(true);
     limpiarMensaje();
 
     try {
+      logger.info('RF01: iniciando autenticación.');
+
       const resultado = await controladorRef.current.iniciarSesion(
         correo,
         contrasena
       );
+
+      logger.info('RF01: resultado del controlador:', {
+        autenticado: resultado?.autenticado,
+        redirigir: resultado?.redirigir,
+        tipoMensaje: resultado?.tipoMensaje,
+        mensaje: resultado?.mensaje,
+      });
 
       if (!componenteActivo.current) return;
 
@@ -134,21 +139,26 @@ export default function PantallaInicioSesion() {
         return;
       }
 
+      // Evitar doble envío mientras se navega.
+      navegando.current = true;
       setInicioExitoso(true);
 
-      // Mantiene visible el mensaje de éxito antes de navegar.
-      temporizadorRedireccion.current = setTimeout(() => {
-        if (componenteActivo.current) {
-          router.replace('/inicio');
-        }
-      }, 1500);
+      logger.info('RF01: navegando al panel /inicio.');
+
+      // Navegar directamente, sin depender de un temporizador.
+      router.replace('/inicio');
     } catch (error) {
       logger.error('RF01 - Error al iniciar sesión:', error);
 
-      mostrarMensaje(
-        'No se pudo iniciar sesión. Inténtelo nuevamente.',
-        'error'
-      );
+      if (componenteActivo.current) {
+        navegando.current = false;
+        setInicioExitoso(false);
+
+        mostrarMensaje(
+          'No se pudo iniciar sesión. Inténtelo nuevamente.',
+          'error'
+        );
+      }
     } finally {
       procesando.current = false;
 
@@ -158,9 +168,9 @@ export default function PantallaInicioSesion() {
     }
   };
 
-  // RF03: abrir la pantalla existente de recuperación.
+  // RF03: recuperar contraseña.
   const recuperarContrasena = () => {
-    if (cargando || inicioExitoso) return;
+    if (cargando || inicioExitoso || navegando.current) return;
 
     limpiarMensaje();
     router.push('/recuperarContrasena');
@@ -169,14 +179,9 @@ export default function PantallaInicioSesion() {
   if (verificandoSesion) {
     return (
       <SafeAreaView style={estilos.pantalla}>
-        <StatusBar
-          barStyle="dark-content"
-          backgroundColor={COLORES.fondo}
-        />
-
+        <StatusBar barStyle="dark-content" backgroundColor={COLORES.fondo} />
         <View style={estilos.cargandoSesion}>
           <ActivityIndicator size="large" color={COLORES.verde} />
-
           <Text style={estilos.textoCargando}>
             Verificando acceso a PetCare...
           </Text>
@@ -187,10 +192,7 @@ export default function PantallaInicioSesion() {
 
   return (
     <SafeAreaView style={estilos.pantalla}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor={COLORES.fondo}
-      />
+      <StatusBar barStyle="dark-content" backgroundColor={COLORES.fondo} />
 
       <ScrollView
         contentContainerStyle={estilos.contenido}
@@ -202,7 +204,6 @@ export default function PantallaInicioSesion() {
           </View>
 
           <Text style={estilos.nombreAplicacion}>PetCare</Text>
-
           <Text style={estilos.descripcionAplicacion}>
             Clínica Veterinaria
           </Text>
@@ -210,7 +211,7 @@ export default function PantallaInicioSesion() {
 
         <FormularioInicioSesion
           onIniciarSesion={iniciarSesion}
-          cargando={cargando}
+          cargando={cargando || navegando.current}
           mensaje={mensaje}
           tipoMensaje={tipoMensaje}
           onLimpiarMensaje={limpiarMensaje}
@@ -230,7 +231,6 @@ const estilos = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORES.fondo,
   },
-
   contenido: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -238,24 +238,20 @@ const estilos = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 30,
   },
-
   cargandoSesion: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   textoCargando: {
     marginTop: 12,
     fontSize: 14,
     color: COLORES.secundario,
   },
-
   encabezado: {
     alignItems: 'center',
     marginBottom: 27,
   },
-
   contenedorLogo: {
     width: 70,
     height: 70,
@@ -265,23 +261,19 @@ const estilos = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 10,
   },
-
   logo: {
     fontSize: 35,
   },
-
   nombreAplicacion: {
     fontSize: 29,
     fontWeight: '800',
     color: COLORES.verde,
   },
-
   descripcionAplicacion: {
     fontSize: 14,
     color: COLORES.secundario,
     marginTop: 3,
   },
-
   piePagina: {
     marginTop: 26,
     fontSize: 12,

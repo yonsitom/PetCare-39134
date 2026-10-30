@@ -1,5 +1,5 @@
 
-import { crearControladorRolUsuario } from '../../services/rolUsuarioControlador';
+import { crearControladorRolUsuario } from '../../controllers/autenticacion/rolUsuarioControlador';
 
 describe('RF02 - Identificar el rol del usuario y mostrar sus funciones', () => {
   let consultarPerfil;
@@ -65,7 +65,7 @@ describe('RF02 - Identificar el rol del usuario y mostrar sus funciones', () => 
 expect(resultado.funciones.indicadores).toBe(true); 
   });
 
-  test('CP03 - Rol no válido: rechaza el acceso y muestra el mensaje definido', async () => {
+  test('CP03 - Rol no vÃ¡lido: rechaza el acceso y muestra el mensaje definido', async () => {
     consultarPerfil.mockResolvedValue({
       rol: '',
       estado_cuenta: 'Activo',
@@ -118,3 +118,4 @@ expect(resultado.funciones.indicadores).toBe(true);
     expect(cerrarSesion).toHaveBeenCalled();
   });
 });
+

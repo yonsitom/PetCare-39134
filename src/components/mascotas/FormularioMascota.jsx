@@ -13,11 +13,15 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../../services/supabase';
+import {
+  validarDatosRegistroMascota,
+} from '../../utils/validacionesRegistroMascota';
 import { logger } from '../../utils/logger';
 
 // ======================================================
-// COLORES PETCARE: PALETA SUAVE Y MINIMALISTA
+// COLORES PETCARE
 // ======================================================
+
 const C = {
   primario: '#187C72',
   primarioOscuro: '#12665E',
@@ -31,7 +35,6 @@ const C = {
   placeholder: '#9AA8A4',
 };
 
-// Se eliminaron las opciones Roedor y Reptil.
 const OPCIONES_ESPECIE = [
   'Perro',
   'Gato',
@@ -62,7 +65,6 @@ function textoSeguro(valor) {
     : String(valor);
 }
 
-// Devuelve el nombre completo del propietario.
 function obtenerNombrePropietario(propietario) {
   if (!propietario) return '';
 
@@ -72,9 +74,13 @@ function obtenerNombrePropietario(propietario) {
 }
 
 // Convierte AAAA-MM-DD en una fecha local.
+// Si la fecha es inválida, retorna null para no ocultar errores.
 function fechaDesdeTexto(valor) {
-  if (!valor || !/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
-    return new Date();
+  if (
+    typeof valor !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(valor)
+  ) {
+    return null;
   }
 
   const [anio, mes, dia] = valor.split('-').map(Number);
@@ -85,13 +91,12 @@ function fechaDesdeTexto(valor) {
     fecha.getMonth() !== mes - 1 ||
     fecha.getDate() !== dia
   ) {
-    return new Date();
+    return null;
   }
 
   return fecha;
 }
 
-// Formato de fecha requerido por Supabase.
 function fechaAISO(fecha) {
   const anio = fecha.getFullYear();
   const mes = String(fecha.getMonth() + 1).padStart(2, '0');
@@ -100,24 +105,20 @@ function fechaAISO(fecha) {
   return `${anio}-${mes}-${dia}`;
 }
 
-// Formato visible DD/MM/AAAA.
 function fechaVisible(valor) {
   if (!valor) return '';
 
-  return fechaAISO(fechaDesdeTexto(valor))
-    .split('-')
-    .reverse()
-    .join('/');
+  const fecha = fechaDesdeTexto(valor);
+
+  if (!fecha) return textoSeguro(valor);
+
+  return fechaAISO(fecha).split('-').reverse().join('/');
 }
 
-// Comprueba si la especie guardada pertenece a las opciones normales.
 function esEspeciePredefinida(valor) {
   return OPCIONES_ESPECIE.includes(textoSeguro(valor));
 }
 
-// Obtiene el nombre que debe mostrarse en el campo personalizado.
-// Si Supabase tiene una especie no incluida en las opciones,
-// el formulario la representa mediante "Otro".
 function obtenerEspecieSeleccionada(valor) {
   const especieGuardada = textoSeguro(valor).trim();
 
@@ -128,7 +129,6 @@ function obtenerEspecieSeleccionada(valor) {
     : 'Otro';
 }
 
-// Obtiene el detalle de la especie cuando se edita una mascota.
 function obtenerEspeciePersonalizada(valor) {
   const especieGuardada = textoSeguro(valor).trim();
 
@@ -169,12 +169,10 @@ export default function FormularioMascota({
     textoSeguro(datosIniciales?.nombre)
   );
 
-  // Estado de la opción principal de especie.
   const [especie, setEspecie] = useState(
     obtenerEspecieSeleccionada(datosIniciales?.especie)
   );
 
-  // Nombre específico cuando la opción seleccionada es "Otro".
   const [especiePersonalizada, setEspeciePersonalizada] =
     useState(
       obtenerEspeciePersonalizada(datosIniciales?.especie)
@@ -209,8 +207,8 @@ export default function FormularioMascota({
     textoSeguro(datosIniciales?.observaciones)
   );
 
-  // Estados para los modales, el calendario y los errores.
   const [errores, setErrores] = useState({});
+  const [errorGeneral, setErrorGeneral] = useState('');
 
   const [modalPropietariosVisible, setModalPropietariosVisible] =
     useState(false);
@@ -222,13 +220,13 @@ export default function FormularioMascota({
     useState(false);
 
   const [fechaCalendario, setFechaCalendario] = useState(
-    fechaDesdeTexto(datosIniciales?.fecha_nacimiento)
+    fechaDesdeTexto(datosIniciales?.fecha_nacimiento) || new Date()
   );
 
   const esEdicion = modo === 'edicion';
 
   // ----------------------------------------------------
-  // CARGAR LOS DATOS CUANDO SE EDITA UNA MASCOTA
+  // CARGAR DATOS INICIALES PARA EDICIÓN
   // ----------------------------------------------------
 
   useEffect(() => {
@@ -240,18 +238,15 @@ export default function FormularioMascota({
 
     setNombre(textoSeguro(datosIniciales.nombre));
 
-    // Si la especie no es una opción normal, seleccionar "Otro".
     setEspecie(
       obtenerEspecieSeleccionada(datosIniciales.especie)
     );
 
-    // Recuperar el nombre de la especie personalizada.
     setEspeciePersonalizada(
       obtenerEspeciePersonalizada(datosIniciales.especie)
     );
 
     setRaza(textoSeguro(datosIniciales.raza));
-
     setSexo(datosIniciales.sexo || 'No registrado');
 
     setFechaNacimiento(
@@ -259,7 +254,7 @@ export default function FormularioMascota({
     );
 
     setFechaCalendario(
-      fechaDesdeTexto(datosIniciales.fecha_nacimiento)
+      fechaDesdeTexto(datosIniciales.fecha_nacimiento) || new Date()
     );
 
     setColor(textoSeguro(datosIniciales.color));
@@ -277,6 +272,7 @@ export default function FormularioMascota({
     );
 
     setErrores({});
+    setErrorGeneral('');
   }, [datosIniciales]);
 
   // ----------------------------------------------------
@@ -311,7 +307,7 @@ export default function FormularioMascota({
       } catch (error) {
         logger.error(
           'Error al cargar propietarios:',
-          error.message
+          error
         );
 
         if (activo) {
@@ -334,7 +330,6 @@ export default function FormularioMascota({
     };
   }, []);
 
-  // Propietario seleccionado, tanto para registro como edición.
   const propietarioSeleccionado =
     propietarios.find(
       (propietario) =>
@@ -344,7 +339,6 @@ export default function FormularioMascota({
     datosIniciales?.propietarios ||
     null;
 
-  // Filtrar por nombre o documento.
   const propietariosFiltrados = propietarios.filter(
     (propietario) => {
       const termino = busquedaPropietario.trim().toLowerCase();
@@ -364,22 +358,7 @@ export default function FormularioMascota({
   );
 
   // ----------------------------------------------------
-  // CAMBIO DE ESPECIE
-  // ----------------------------------------------------
-
-  function seleccionarEspecie(nuevaEspecie) {
-    setEspecie(nuevaEspecie);
-    limpiarError('especie');
-
-    // Al elegir una especie normal, borrar el detalle de "Otro".
-    if (nuevaEspecie !== 'Otro') {
-      setEspeciePersonalizada('');
-      limpiarError('especiePersonalizada');
-    }
-  }
-
-  // ----------------------------------------------------
-  // VALIDACIONES
+  // LIMPIEZA DE ERRORES
   // ----------------------------------------------------
 
   function limpiarError(campo) {
@@ -387,12 +366,22 @@ export default function FormularioMascota({
       ...actuales,
       [campo]: '',
     }));
+
+    setErrorGeneral('');
   }
+
+  // ----------------------------------------------------
+  // VALIDACIONES DE INTERFAZ
+  // ----------------------------------------------------
 
   function validarFormulario() {
     const nuevosErrores = {};
 
-    if (!propietarioId) {
+    if (
+      propietarioId === null ||
+      propietarioId === undefined ||
+      String(propietarioId).trim() === ''
+    ) {
       nuevosErrores.propietario_id =
         'Selecciona un propietario.';
     }
@@ -407,7 +396,6 @@ export default function FormularioMascota({
         'Selecciona una especie.';
     }
 
-    // Si selecciona "Otro", debe especificar cuál.
     if (
       especie === 'Otro' &&
       !especiePersonalizada.trim()
@@ -416,16 +404,19 @@ export default function FormularioMascota({
         'Especifica la especie de la mascota.';
     }
 
+    // Validación de fecha mediante el mismo criterio de RF17.
     if (fechaNacimiento) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaNacimiento)) {
+      const fechaValida = fechaDesdeTexto(fechaNacimiento);
+
+      if (!fechaValida) {
         nuevosErrores.fecha_nacimiento =
           'Selecciona una fecha válida.';
       } else {
-        const fecha = fechaDesdeTexto(fechaNacimiento);
         const hoy = new Date();
-        hoy.setHours(23, 59, 59, 999);
+        hoy.setHours(0, 0, 0, 0);
+        fechaValida.setHours(0, 0, 0, 0);
 
-        if (fecha > hoy) {
+        if (fechaValida > hoy) {
           nuevosErrores.fecha_nacimiento =
             'La fecha no puede ser futura.';
         }
@@ -443,20 +434,18 @@ export default function FormularioMascota({
 
     setErrores(nuevosErrores);
 
-    return Object.values(nuevosErrores).every(
-      (mensaje) => !mensaje
-    );
+    return Object.keys(nuevosErrores).length === 0;
   }
 
   // ----------------------------------------------------
-  // PREPARAR Y ENVIAR LOS DATOS
+  // PREPARAR Y VALIDAR LOS DATOS DE RF17
   // ----------------------------------------------------
 
   async function manejarContinuar() {
-    if (cargando || !validarFormulario()) return;
+    if (cargando) return;
 
-    // Si eligió "Otro", se guarda el nombre específico en
-    // la columna existente "especie" de Supabase.
+    const formularioValido = validarFormulario();
+
     const especieFinal =
       especie === 'Otro'
         ? especiePersonalizada.trim()
@@ -474,13 +463,28 @@ export default function FormularioMascota({
       observaciones: observaciones.trim() || null,
     };
 
+    // La validación independiente también se utiliza en Jest.
+    const resultado = validarDatosRegistroMascota(
+      datosMascota
+    );
+
+    if (!resultado.valido) {
+      setErrorGeneral(resultado.mensaje);
+      return;
+    }
+
+    setErrorGeneral('');
+
+    // No continuar si hay errores específicos del formulario.
+    if (!formularioValido) return;
+
     try {
       if (typeof onContinuar === 'function') {
         await onContinuar(datosMascota);
       }
     } catch (error) {
       logger.error(
-        'Error al enviar la mascota:',
+        'Error al enviar los datos de la mascota:',
         error
       );
 
@@ -492,8 +496,18 @@ export default function FormularioMascota({
   }
 
   // ----------------------------------------------------
-  // PROPIETARIO Y CALENDARIO
+  // CAMBIOS DE ESPECIE Y PROPIETARIO
   // ----------------------------------------------------
+
+  function seleccionarEspecie(nuevaEspecie) {
+    setEspecie(nuevaEspecie);
+    limpiarError('especie');
+
+    if (nuevaEspecie !== 'Otro') {
+      setEspeciePersonalizada('');
+      limpiarError('especiePersonalizada');
+    }
+  }
 
   function seleccionarPropietario(propietario) {
     setPropietarioId(
@@ -505,9 +519,13 @@ export default function FormularioMascota({
     limpiarError('propietario_id');
   }
 
+  // ----------------------------------------------------
+  // CALENDARIO
+  // ----------------------------------------------------
+
   function abrirCalendario() {
     setFechaCalendario(
-      fechaDesdeTexto(fechaNacimiento)
+      fechaDesdeTexto(fechaNacimiento) || new Date()
     );
 
     setCalendarioVisible(true);
@@ -528,6 +546,10 @@ export default function FormularioMascota({
     setCalendarioVisible(false);
   }
 
+  // ----------------------------------------------------
+  // COMPONENTES REUTILIZABLES DEL FORMULARIO
+  // ----------------------------------------------------
+
   function renderError(campo) {
     if (!errores[campo]) return null;
 
@@ -538,7 +560,6 @@ export default function FormularioMascota({
     );
   }
 
-  // Campo de texto reutilizable para mantener el mismo estilo.
   function renderCampoTexto({
     etiqueta,
     valor,
@@ -565,9 +586,7 @@ export default function FormularioMascota({
           placeholder={placeholder}
           placeholderTextColor={C.placeholder}
           multiline={multilinea}
-          textAlignVertical={
-            multilinea ? 'top' : 'center'
-          }
+          textAlignVertical={multilinea ? 'top' : 'center'}
           editable={!cargando}
         />
 
@@ -576,7 +595,6 @@ export default function FormularioMascota({
     );
   }
 
-  // Opciones compactas en una sola fila.
   function renderOpciones({
     etiqueta,
     valor,
@@ -597,8 +615,7 @@ export default function FormularioMascota({
                 key={opcion}
                 style={[
                   styles.opcion,
-                  seleccionada &&
-                    styles.opcionSeleccionada,
+                  seleccionada && styles.opcionSeleccionada,
                 ]}
                 onPress={() => {
                   seleccionar(opcion);
@@ -608,9 +625,7 @@ export default function FormularioMascota({
                 activeOpacity={0.75}
               >
                 {seleccionada && (
-                  <View
-                    style={styles.puntoSeleccionado}
-                  />
+                  <View style={styles.puntoSeleccionado} />
                 )}
 
                 <Text
@@ -635,7 +650,6 @@ export default function FormularioMascota({
     );
   }
 
-  // Títulos sencillos: sin números ni descripciones repetitivas.
   function renderTitulo(titulo) {
     return (
       <Text style={styles.tituloSeccion}>
@@ -645,7 +659,7 @@ export default function FormularioMascota({
   }
 
   // ====================================================
-  // INTERFAZ PRINCIPAL
+  // INTERFAZ
   // ====================================================
 
   return (
@@ -656,6 +670,18 @@ export default function FormularioMascota({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {/* MENSAJE GENERAL RF17 */}
+        {!!errorGeneral && (
+          <View
+            style={styles.contenedorErrorGeneral}
+            accessibilityRole="alert"
+          >
+            <Text style={styles.textoErrorGeneral}>
+              {errorGeneral}
+            </Text>
+          </View>
+        )}
+
         {/* PROPIETARIO */}
         <View style={styles.seccion}>
           {renderTitulo('Propietario')}
@@ -668,8 +694,7 @@ export default function FormularioMascota({
             <TouchableOpacity
               style={[
                 styles.selectorPropietario,
-                errores.propietario_id &&
-                  styles.inputConError,
+                errores.propietario_id && styles.inputConError,
               ]}
               onPress={() => {
                 setBusquedaPropietario('');
@@ -680,9 +705,7 @@ export default function FormularioMascota({
             >
               <View style={styles.contenidoSelector}>
                 <View style={styles.iconoPropietario}>
-                  <Text
-                    style={styles.textoIconoPropietario}
-                  >
+                  <Text style={styles.textoIconoPropietario}>
                     P
                   </Text>
                 </View>
@@ -704,19 +727,14 @@ export default function FormularioMascota({
                   </Text>
 
                   {!!propietarioSeleccionado?.documento_identidad && (
-                    <Text
-                      style={styles.documentoPropietario}
-                    >
-                      DNI:{' '}
-                      {propietarioSeleccionado.documento_identidad}
+                    <Text style={styles.documentoPropietario}>
+                      DNI: {propietarioSeleccionado.documento_identidad}
                     </Text>
                   )}
                 </View>
               </View>
 
-              <Text style={styles.flechaSelector}>
-                ⌄
-              </Text>
+              <Text style={styles.flechaSelector}>⌄</Text>
             </TouchableOpacity>
 
             {renderError('propietario_id')}
@@ -745,7 +763,6 @@ export default function FormularioMascota({
             campo: 'especie',
           })}
 
-          {/* Este campo aparece únicamente si se elige "Otro". */}
           {especie === 'Otro' && (
             <View style={styles.campo}>
               <Text style={styles.etiqueta}>
@@ -790,7 +807,7 @@ export default function FormularioMascota({
             campo: 'sexo',
           })}
 
-          {/* Fecha con botón de calendario integrado. */}
+          {/* FECHA DE NACIMIENTO */}
           <View style={styles.campo}>
             <Text style={styles.etiqueta}>
               Fecha de nacimiento
@@ -799,8 +816,7 @@ export default function FormularioMascota({
             <View
               style={[
                 styles.filaFecha,
-                errores.fecha_nacimiento &&
-                  styles.inputConError,
+                errores.fecha_nacimiento && styles.inputConError,
               ]}
             >
               <TextInput
@@ -822,9 +838,7 @@ export default function FormularioMascota({
                   disabled={cargando}
                   accessibilityLabel="Limpiar fecha"
                 >
-                  <Text style={styles.textoLimpiarFecha}>
-                    ×
-                  </Text>
+                  <Text style={styles.textoLimpiarFecha}>×</Text>
                 </TouchableOpacity>
               )}
 
@@ -836,9 +850,7 @@ export default function FormularioMascota({
                 accessibilityRole="button"
                 accessibilityLabel="Abrir calendario"
               >
-                <Text style={styles.iconoCalendario}>
-                  ▦
-                </Text>
+                <Text style={styles.iconoCalendario}>▦</Text>
               </TouchableOpacity>
             </View>
 
@@ -901,15 +913,10 @@ export default function FormularioMascota({
             activeOpacity={0.8}
           >
             {cargando ? (
-              <ActivityIndicator
-                color="#FFFFFF"
-                size="small"
-              />
+              <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
               <Text style={styles.textoBotonContinuar}>
-                {esEdicion
-                  ? 'Guardar cambios'
-                  : 'Registrar mascota'}
+                {esEdicion ? 'Guardar cambios' : 'Registrar mascota'}
               </Text>
             )}
           </TouchableOpacity>
@@ -918,7 +925,7 @@ export default function FormularioMascota({
         <View style={styles.espacioFinal} />
       </ScrollView>
 
-      {/* CALENDARIO DEL DISPOSITIVO */}
+      {/* CALENDARIO */}
       {calendarioVisible && (
         <DateTimePicker
           value={fechaCalendario}
@@ -929,14 +936,12 @@ export default function FormularioMascota({
         />
       )}
 
-      {/* MODAL DE SELECCIÓN DE PROPIETARIO */}
+      {/* MODAL DE PROPIETARIOS */}
       <Modal
         visible={modalPropietariosVisible}
         transparent
         animationType="fade"
-        onRequestClose={() =>
-          setModalPropietariosVisible(false)
-        }
+        onRequestClose={() => setModalPropietariosVisible(false)}
       >
         <View style={styles.fondoModal}>
           <View style={styles.contenedorModal}>
@@ -953,14 +958,10 @@ export default function FormularioMascota({
 
               <TouchableOpacity
                 style={styles.botonCerrarModal}
-                onPress={() =>
-                  setModalPropietariosVisible(false)
-                }
+                onPress={() => setModalPropietariosVisible(false)}
                 activeOpacity={0.75}
               >
-                <Text style={styles.textoCerrarModal}>
-                  ×
-                </Text>
+                <Text style={styles.textoCerrarModal}>×</Text>
               </TouchableOpacity>
             </View>
 
@@ -975,11 +976,7 @@ export default function FormularioMascota({
 
             {cargandoPropietarios ? (
               <View style={styles.estadoModal}>
-                <ActivityIndicator
-                  color={C.primario}
-                  size="large"
-                />
-
+                <ActivityIndicator color={C.primario} size="large" />
                 <Text style={styles.textoEstadoModal}>
                   Cargando propietarios...
                 </Text>
@@ -1003,17 +1000,13 @@ export default function FormularioMascota({
 
                   return (
                     <TouchableOpacity
-                      key={String(
-                        propietario.propietario_id
-                      )}
+                      key={String(propietario.propietario_id)}
                       style={[
                         styles.itemPropietario,
                         seleccionado &&
                           styles.itemPropietarioSeleccionado,
                       ]}
-                      onPress={() =>
-                        seleccionarPropietario(propietario)
-                      }
+                      onPress={() => seleccionarPropietario(propietario)}
                       activeOpacity={0.75}
                     >
                       <View style={styles.avatarPropietario}>
@@ -1025,35 +1018,23 @@ export default function FormularioMascota({
                       </View>
 
                       <View style={styles.detallePropietario}>
-                        <Text
-                          style={styles.nombreListaPropietario}
-                        >
+                        <Text style={styles.nombreListaPropietario}>
                           {obtenerNombrePropietario(propietario)}
                         </Text>
 
-                        <Text
-                          style={
-                            styles.documentoListaPropietario
-                          }
-                        >
-                          DNI:{' '}
-                          {propietario.documento_identidad ||
-                            'No registrado'}
+                        <Text style={styles.documentoListaPropietario}>
+                          DNI: {propietario.documento_identidad || 'No registrado'}
                         </Text>
 
                         {!!propietario.telefono && (
-                          <Text
-                            style={styles.telefonoPropietario}
-                          >
+                          <Text style={styles.telefonoPropietario}>
                             {propietario.telefono}
                           </Text>
                         )}
                       </View>
 
                       {seleccionado && (
-                        <Text style={styles.marcaSeleccion}>
-                          ✓
-                        </Text>
+                        <Text style={styles.marcaSeleccion}>✓</Text>
                       )}
                     </TouchableOpacity>
                   );
@@ -1063,9 +1044,7 @@ export default function FormularioMascota({
 
             <TouchableOpacity
               style={styles.botonCerrarInferior}
-              onPress={() =>
-                setModalPropietariosVisible(false)
-              }
+              onPress={() => setModalPropietariosVisible(false)}
               activeOpacity={0.8}
             >
               <Text style={styles.textoBotonCerrarInferior}>
@@ -1079,57 +1058,64 @@ export default function FormularioMascota({
   );
 }
 
-// ====================================================
-// ESTILOS: SIMPLES, COMPACTOS Y SIN TARJETAS EXTERIORES
-// ====================================================
+// ======================================================
+// ESTILOS
+// ======================================================
 
 const styles = StyleSheet.create({
   contenedorPrincipal: {
     flex: 1,
     backgroundColor: C.fondo,
   },
-
   scroll: {
     flex: 1,
   },
-
   contenido: {
     flexGrow: 1,
     paddingTop: 4,
     paddingBottom: 16,
   },
-
+  contenedorErrorGeneral: {
+    marginHorizontal: 18,
+    marginTop: 10,
+    marginBottom: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#F2C7C3',
+    borderRadius: 9,
+    backgroundColor: '#FFF2F1',
+  },
+  textoErrorGeneral: {
+    color: '#B42318',
+    fontSize: 12,
+    lineHeight: 18,
+  },
   seccion: {
     paddingHorizontal: 18,
     paddingTop: 10,
     paddingBottom: 0,
   },
-
   tituloSeccion: {
     color: C.texto,
     fontSize: 17,
     fontWeight: '800',
     marginBottom: 15,
   },
-
   divisor: {
     height: 1,
     backgroundColor: C.borde,
     marginHorizontal: 18,
     marginVertical: 5,
   },
-
   campo: {
     marginBottom: 13,
   },
-
   etiqueta: {
     color: C.texto,
     fontSize: 12,
     fontWeight: '700',
     marginBottom: 6,
   },
-
   input: {
     minHeight: 43,
     borderWidth: 1,
@@ -1141,23 +1127,18 @@ const styles = StyleSheet.create({
     color: C.texto,
     fontSize: 14,
   },
-
   inputMultilinea: {
     minHeight: 76,
     paddingTop: 11,
   },
-
   inputConError: {
     borderColor: C.rojo,
   },
-
   textoError: {
     color: C.rojo,
     fontSize: 11,
     marginTop: 5,
   },
-
-  // Selector de propietario.
   selectorPropietario: {
     minHeight: 56,
     flexDirection: 'row',
@@ -1170,13 +1151,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-
   contenidoSelector: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   iconoPropietario: {
     width: 34,
     height: 34,
@@ -1186,48 +1165,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 10,
   },
-
   textoIconoPropietario: {
     color: C.primario,
     fontSize: 14,
     fontWeight: '800',
   },
-
   infoPropietario: {
     flex: 1,
   },
-
   textoPropietario: {
     color: C.texto,
     fontSize: 13,
     fontWeight: '600',
   },
-
   textoPlaceholder: {
     color: C.placeholder,
     fontWeight: '400',
   },
-
   documentoPropietario: {
     color: C.secundario,
     fontSize: 11,
     marginTop: 3,
   },
-
   flechaSelector: {
     color: C.secundario,
     fontSize: 21,
     marginLeft: 8,
   },
-
-  // Opciones compactas en una fila.
   filaOpciones: {
     width: '100%',
     flexDirection: 'row',
     alignItems: 'stretch',
     gap: 5,
   },
-
   opcion: {
     flex: 1,
     minWidth: 0,
@@ -1243,32 +1213,26 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: C.fondo,
   },
-
   opcionSeleccionada: {
     backgroundColor: C.verdeClaro,
     borderColor: C.primario,
   },
-
   puntoSeleccionado: {
     width: 5,
     height: 5,
     borderRadius: 3,
     backgroundColor: C.primario,
   },
-
   textoOpcion: {
     flexShrink: 1,
     color: C.secundario,
     fontSize: 10,
     textAlign: 'center',
   },
-
   textoOpcionSeleccionada: {
     color: C.primarioOscuro,
     fontWeight: '800',
   },
-
-  // Fecha y calendario.
   filaFecha: {
     minHeight: 43,
     flexDirection: 'row',
@@ -1279,7 +1243,6 @@ const styles = StyleSheet.create({
     backgroundColor: C.fondo,
     overflow: 'hidden',
   },
-
   inputFecha: {
     flex: 1,
     minWidth: 0,
@@ -1288,7 +1251,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-
   botonCalendario: {
     width: 43,
     alignSelf: 'stretch',
@@ -1298,32 +1260,26 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     borderLeftColor: C.borde,
   },
-
   iconoCalendario: {
     color: C.primario,
     fontSize: 19,
     fontWeight: '700',
   },
-
   botonLimpiarFecha: {
     alignSelf: 'stretch',
     paddingHorizontal: 9,
     justifyContent: 'center',
   },
-
   textoLimpiarFecha: {
     color: C.secundario,
     fontSize: 21,
   },
-
-  // Botones inferiores.
   contenedorBotones: {
     flexDirection: 'row',
     gap: 9,
     marginHorizontal: 18,
     marginTop: 5,
   },
-
   botonCancelar: {
     flex: 1,
     minHeight: 44,
@@ -1335,13 +1291,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
-
   textoBotonCancelar: {
     color: C.texto,
     fontSize: 12,
     fontWeight: '700',
   },
-
   botonContinuar: {
     flex: 1.5,
     minHeight: 44,
@@ -1351,22 +1305,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
-
   textoBotonContinuar: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '800',
   },
-
   botonDeshabilitado: {
     opacity: 0.65,
   },
-
   espacioFinal: {
     height: 14,
   },
-
-  // Modal de propietarios.
   fondoModal: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.42)',
@@ -1374,7 +1323,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 18,
   },
-
   contenedorModal: {
     width: '100%',
     maxWidth: 500,
@@ -1383,32 +1331,27 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     padding: 16,
   },
-
   encabezadoModal: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: 13,
   },
-
   titulosModal: {
     flex: 1,
     paddingRight: 10,
   },
-
   tituloModal: {
     color: C.texto,
     fontSize: 17,
     fontWeight: '800',
   },
-
   subtituloModal: {
     color: C.secundario,
     fontSize: 12,
     marginTop: 4,
     lineHeight: 17,
   },
-
   botonCerrarModal: {
     width: 32,
     height: 32,
@@ -1417,13 +1360,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   textoCerrarModal: {
     color: C.texto,
     fontSize: 24,
     lineHeight: 27,
   },
-
   inputBusqueda: {
     minHeight: 42,
     borderWidth: 1,
@@ -1435,12 +1376,10 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     backgroundColor: C.fondo,
   },
-
   listaPropietarios: {
     flexGrow: 0,
     flexShrink: 1,
   },
-
   itemPropietario: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1450,11 +1389,9 @@ const styles = StyleSheet.create({
     borderBottomColor: C.borde,
     borderRadius: 8,
   },
-
   itemPropietarioSeleccionado: {
     backgroundColor: C.verdeClaro,
   },
-
   avatarPropietario: {
     width: 36,
     height: 36,
@@ -1464,61 +1401,51 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 10,
   },
-
   textoAvatar: {
     color: C.primario,
     fontSize: 14,
     fontWeight: '800',
   },
-
   detallePropietario: {
     flex: 1,
   },
-
   nombreListaPropietario: {
     color: C.texto,
     fontSize: 13,
     fontWeight: '700',
   },
-
   documentoListaPropietario: {
     color: C.secundario,
     fontSize: 11,
     marginTop: 3,
   },
-
   telefonoPropietario: {
     color: C.secundario,
     fontSize: 11,
     marginTop: 2,
   },
-
   marcaSeleccion: {
     color: C.primario,
     fontSize: 18,
     fontWeight: '800',
     marginLeft: 7,
   },
-
   estadoModal: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 25,
   },
-
   textoEstadoModal: {
     color: C.secundario,
     fontSize: 12,
     marginTop: 9,
   },
-
   textoSinResultados: {
     color: C.secundario,
     fontSize: 13,
     paddingVertical: 22,
     textAlign: 'center',
   },
-
   botonCerrarInferior: {
     minHeight: 41,
     backgroundColor: C.grisClaro,
@@ -1527,7 +1454,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 12,
   },
-
   textoBotonCerrarInferior: {
     color: C.texto,
     fontSize: 13,

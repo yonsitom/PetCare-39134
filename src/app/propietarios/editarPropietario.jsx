@@ -5,7 +5,6 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -14,22 +13,22 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
-import { EncabezadoPetCare } from '../../components/layout/EncabezadoPetCare';
+import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 
 import {
   consultarPropietarioPorId,
   actualizarPropietario,
-  validarDatosPropietario,
 } from '../../dao/propietarioDAO';
 
 import { supabase } from '../../services/supabase';
 import { logger } from '../../utils/logger';
 
 // ============================================================
-// COLORES DE LA INTERFAZ
+// RF15: COLORES DE LA INTERFAZ
 // ============================================================
 const C = {
   primario: '#187C72',
@@ -44,8 +43,6 @@ const C = {
 
 // ============================================================
 // COMPONENTE REUTILIZABLE DE CAMPO
-// IMPORTANTE: está fuera de EditarPropietario para evitar
-// que se desmonte y cierre el teclado al escribir cada letra.
 // ============================================================
 function CampoFormulario({
   etiqueta,
@@ -89,6 +86,7 @@ function CampoFormulario({
         underlineColorAndroid="transparent"
         blurOnSubmit={!multilinea}
         returnKeyType={multilinea ? 'default' : 'next'}
+        accessibilityLabel={etiqueta}
       />
 
       {error ? (
@@ -105,7 +103,6 @@ export default function EditarPropietario() {
   const parametros = useLocalSearchParams();
   const propietarioId = parametros.propietarioId;
 
-  // Datos editables del propietario.
   const [formulario, setFormulario] = useState({
     nombre: '',
     apellido: '',
@@ -116,11 +113,9 @@ export default function EditarPropietario() {
     observaciones: '',
   });
 
-  // Información del usuario autenticado.
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [rolUsuario, setRolUsuario] = useState('');
 
-  // Estados de la pantalla.
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
@@ -136,7 +131,9 @@ export default function EditarPropietario() {
         error: errorUsuario,
       } = await supabase.auth.getUser();
 
-      if (errorUsuario) throw errorUsuario;
+      if (errorUsuario) {
+        throw errorUsuario;
+      }
 
       if (!user) {
         setNombreUsuario('Usuario');
@@ -150,7 +147,9 @@ export default function EditarPropietario() {
         .eq('perfil_id', user.id)
         .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       setNombreUsuario(
         data?.nombre_completo || user.email || 'Usuario',
@@ -199,6 +198,8 @@ export default function EditarPropietario() {
         direccion: propietario.direccion || '',
         observaciones: propietario.observaciones || '',
       });
+
+      setErrores({});
     } catch (error) {
       logger.error('Error al cargar propietario:', error);
 
@@ -235,34 +236,34 @@ export default function EditarPropietario() {
   };
 
   // ==========================================================
-  // VALIDAR EL FORMULARIO
+  // VALIDAR EL FORMULARIO — RF15 / CP02 / CP03
   // ==========================================================
   const validarFormulario = () => {
     const nuevosErrores = {};
 
-    if (!formulario.nombre.trim()) {
+    const nombre = formulario.nombre.trim();
+    const apellido = formulario.apellido.trim();
+    const dni = formulario.documento_identidad.trim();
+    const telefono = formulario.telefono.trim().replace(/\s/g, '');
+    const correo = formulario.correo.trim();
+
+    if (!nombre) {
       nuevosErrores.nombre = 'Ingrese los nombres del propietario.';
     }
 
-    if (!formulario.apellido.trim()) {
+    if (!apellido) {
       nuevosErrores.apellido = 'Ingrese los apellidos del propietario.';
     }
-
-    const dni = formulario.documento_identidad.trim();
 
     if (!/^\d{8}$/.test(dni)) {
       nuevosErrores.documento_identidad =
         'El DNI debe contener exactamente 8 dígitos.';
     }
 
-    const telefono = formulario.telefono.trim().replace(/\s/g, '');
-
     if (telefono && !/^(\+51)?9\d{8}$/.test(telefono)) {
       nuevosErrores.telefono =
         'Ingrese un celular válido de 9 dígitos.';
     }
-
-    const correo = formulario.correo.trim();
 
     if (
       correo &&
@@ -275,10 +276,15 @@ export default function EditarPropietario() {
     setErrores(nuevosErrores);
 
     if (Object.keys(nuevosErrores).length > 0) {
+      const faltanObligatorios = !nombre || !apellido;
+
       Alert.alert(
         'Revise el formulario',
-        'Corrija los campos señalados antes de continuar.',
+        faltanObligatorios
+          ? 'Complete los campos obligatorios para continuar.'
+          : 'Verifique el formato de los datos ingresados.',
       );
+
       return false;
     }
 
@@ -286,11 +292,24 @@ export default function EditarPropietario() {
   };
 
   // ==========================================================
-  // GUARDAR LOS CAMBIOS
+  // GUARDAR LOS CAMBIOS — RF15 / CP01 / CP04 / CP05
   // ==========================================================
   const guardarCambios = async () => {
-    if (guardando) return;
-    if (!validarFormulario()) return;
+    if (guardando) {
+      return;
+    }
+
+    if (!validarFormulario()) {
+      return;
+    }
+
+    if (!propietarioId) {
+      Alert.alert(
+        'No se pudo actualizar',
+        'No se recibió el identificador del propietario.',
+      );
+      return;
+    }
 
     const datosActualizados = {
       nombre: formulario.nombre.trim(),
@@ -305,35 +324,6 @@ export default function EditarPropietario() {
     try {
       setGuardando(true);
 
-      // Validación adicional del DAO, si está definida.
-      if (typeof validarDatosPropietario === 'function') {
-        const validacion = await validarDatosPropietario(
-          datosActualizados,
-          propietarioId,
-        );
-
-        if (validacion === false) {
-          throw new Error('Los datos ingresados no son válidos.');
-        }
-
-        if (
-          typeof validacion === 'string' &&
-          validacion.trim()
-        ) {
-          throw new Error(validacion);
-        }
-
-        if (
-          validacion &&
-          typeof validacion === 'object' &&
-          validacion.valido === false
-        ) {
-          throw new Error(
-            validacion.mensaje || 'Revise los datos ingresados.',
-          );
-        }
-      }
-
       const resultado = await actualizarPropietario(
         propietarioId,
         datosActualizados,
@@ -345,7 +335,7 @@ export default function EditarPropietario() {
 
       Alert.alert(
         'Actualización exitosa',
-        'La información del propietario se actualizó correctamente.',
+        'Los datos del propietario fueron actualizados correctamente.',
         [
           {
             text: 'Aceptar',
@@ -363,11 +353,21 @@ export default function EditarPropietario() {
     } catch (error) {
       logger.error('Error al actualizar propietario:', error);
 
-      Alert.alert(
-        'No se pudo actualizar',
-        error?.message ||
-          'Ocurrió un problema al guardar los cambios. Inténtelo nuevamente.',
-      );
+      let mensajeError =
+        'No se pudieron guardar los cambios. Intente nuevamente.';
+
+      if (
+        error?.code === 'DUPLICADO_DNI' ||
+        error?.code === 'DUPLICADO_CORREO' ||
+        error?.code === '23505' ||
+        /ya se encuentra registrado|ya existe/i.test(
+          error?.message || '',
+        )
+      ) {
+        mensajeError = 'El propietario ya se encuentra registrado.';
+      }
+
+      Alert.alert('No se pudo actualizar', mensajeError);
     } finally {
       setGuardando(false);
     }
@@ -376,29 +376,37 @@ export default function EditarPropietario() {
   // ==========================================================
   // CONFIRMAR ANTES DE GUARDAR
   // ==========================================================
-  const confirmarActualizacion = () => {
-    Alert.alert(
-      'Confirmar cambios',
-      '¿Desea guardar la información modificada del propietario?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Guardar',
-          onPress: guardarCambios,
-        },
-      ],
-    );
-  };
+const confirmarActualizacion = () => {
+  // RF15: validar antes de solicitar la confirmación.
+  // Si hay errores, no se debe abrir el diálogo de confirmación.
+  if (!validarFormulario()) {
+    return;
+  }
 
+  Alert.alert(
+    'Confirmar cambios',
+    '¿Desea guardar la información modificada del propietario?',
+    [
+      {
+        text: 'Cancelar',
+        style: 'cancel',
+      },
+      {
+        text: 'Guardar',
+        onPress: guardarCambios,
+      },
+    ],
+  );
+};
   // ==========================================================
   // VISTA DE CARGA
   // ==========================================================
   if (cargando) {
     return (
-      <SafeAreaView style={styles.pantallaCarga}>
+      <SafeAreaView
+        style={styles.pantallaCarga}
+        edges={['top', 'left', 'right']}
+      >
         <StatusBar
           barStyle="dark-content"
           backgroundColor={C.fondo}
@@ -417,13 +425,15 @@ export default function EditarPropietario() {
   // INTERFAZ PRINCIPAL
   // ==========================================================
   return (
-    <SafeAreaView style={styles.contenedorPrincipal}>
+    <SafeAreaView
+      style={styles.contenedorPrincipal}
+      edges={['top', 'left', 'right']}
+    >
       <StatusBar
         barStyle="dark-content"
         backgroundColor={C.fondo}
       />
 
-      {/* Encabezado compartido de PetCare */}
       <EncabezadoPetCare
         onAbrirMenu={() => setMenuAbierto(true)}
         onAbrirNotificaciones={() =>
@@ -445,14 +455,12 @@ export default function EditarPropietario() {
           keyboardDismissMode="none"
           showsVerticalScrollIndicator={false}
         >
-          {/* Ruta de navegación */}
           <View style={styles.migas}>
             <Text style={styles.migaInicio}>Propietarios</Text>
             <Text style={styles.separadorMigas}> / </Text>
             <Text style={styles.migaActual}>Editar información</Text>
           </View>
 
-          {/* Botón Volver a la izquierda del título */}
           <View style={styles.filaTitulo}>
             <TouchableOpacity
               style={styles.botonVolver}
@@ -471,7 +479,6 @@ export default function EditarPropietario() {
             </View>
           </View>
 
-          {/* Formulario sin tarjeta exterior */}
           <View style={styles.contenedorFormulario}>
             <Text style={styles.textoAyuda}>
               Los campos marcados con * son obligatorios.
@@ -555,7 +562,6 @@ export default function EditarPropietario() {
               onCambiar={cambiarCampo}
             />
 
-            {/* Botones de acción */}
             <View style={styles.contenedorBotones}>
               <TouchableOpacity
                 style={[
@@ -577,6 +583,7 @@ export default function EditarPropietario() {
                 ]}
                 onPress={confirmarActualizacion}
                 disabled={guardando}
+                accessibilityRole="button"
               >
                 {guardando ? (
                   <ActivityIndicator
@@ -596,7 +603,6 @@ export default function EditarPropietario() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Menú lateral compartido */}
       <MenuLateralDerecho
         visible={menuAbierto}
         onCerrar={() => setMenuAbierto(false)}
@@ -706,7 +712,6 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
 
-  // Ocupa todo el ancho disponible, sin borde ni tarjeta.
   contenedorFormulario: {
     width: '100%',
     alignSelf: 'stretch',

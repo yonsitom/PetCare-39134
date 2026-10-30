@@ -99,7 +99,15 @@ async function comprobarCorreoDuplicado(correo, propietarioId = null) {
     );
   }
 }
+// 
+// RF12: evita abrir el resumen si existen datos duplicados.
+// ============================================================
 
+export async function validarDisponibilidadPropietario(datos) {
+  await comprobarDniDuplicado(datos.documento_identidad);
+  await comprobarCorreoDuplicado(datos.correo);
+  return true;
+}
 // ============================================================
 // PREPARAR DATOS PARA INSERTAR O ACTUALIZAR
 // ============================================================

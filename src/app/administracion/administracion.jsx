@@ -15,6 +15,7 @@ import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 import TarjetaGestion from '../../components/administracion/TarjetaGestion';
 import { administracionStyles as styles } from '../../styles/administracionStyles';
+import { logger } from '../../utils/logger';
 
 const INDICADORES_VACIOS = {
   total: 0,
@@ -22,25 +23,22 @@ const INDICADORES_VACIOS = {
   inactivos: 0,
 };
 
-import { Stack } from 'expo-router';
-import { logger } from '../../utils/logger';
-
-
 export default function AdministracionScreen() {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [rolUsuario, setRolUsuario] = useState('');
   const [estadoCuenta, setEstadoCuenta] = useState('');
-
   const [cargandoIndicadores, setCargandoIndicadores] = useState(true);
 
   const [totales, setTotales] = useState({
     usuarios: { ...INDICADORES_VACIOS },
     mascotas: { ...INDICADORES_VACIOS },
     propietarios: { ...INDICADORES_VACIOS },
+    medicamentos: { ...INDICADORES_VACIOS },
   });
 
-  // Consulta el total y los estados de los registros.
+  // Consulta los registros y calcula el total y los estados.
+  // RF de administración: consulta de indicadores de los catálogos.
   const contarPorEstado = async (tabla, columnaEstado) => {
     const { data, error } = await supabase
       .from(tabla)
@@ -64,7 +62,7 @@ export default function AdministracionScreen() {
     };
   };
 
-  // Carga los contadores de las tarjetas.
+  // Consulta los indicadores de los módulos de Administración.
   const cargarIndicadores = useCallback(async () => {
     setCargandoIndicadores(true);
 
@@ -73,6 +71,7 @@ export default function AdministracionScreen() {
         contarPorEstado('perfiles', 'estado_cuenta'),
         contarPorEstado('mascotas', 'estado'),
         contarPorEstado('propietarios', 'estado'),
+        contarPorEstado('medicamentos', 'activo'),
       ]);
 
       setTotales((anteriores) => ({
@@ -90,15 +89,20 @@ export default function AdministracionScreen() {
           resultados[2].status === 'fulfilled'
             ? resultados[2].value
             : anteriores.propietarios,
+
+        medicamentos:
+          resultados[3].status === 'fulfilled'
+            ? resultados[3].value
+            : anteriores.medicamentos,
       }));
     } catch (error) {
-      logger.error('Error al cargar los contadores:', error);
+      logger.error('Error al cargar los indicadores:', error);
     } finally {
       setCargandoIndicadores(false);
     }
   }, []);
 
-  // Valida la sesión y los permisos del administrador.
+  // Valida sesión, estado de cuenta y rol del usuario.
   const cargarPerfil = useCallback(async () => {
     try {
       const {
@@ -150,7 +154,7 @@ export default function AdministracionScreen() {
         return;
       }
 
-      cargarIndicadores();
+      await cargarIndicadores();
     } catch (error) {
       logger.error('Error al validar el perfil:', error);
       router.replace('/');
@@ -198,12 +202,14 @@ export default function AdministracionScreen() {
         contentContainerStyle={styles.contenido}
         showsVerticalScrollIndicator={false}
       >
+        {/* Ruta de navegación */}
         <View style={styles.ruta}>
           <Text style={styles.textoRuta}>Inicio</Text>
           <Text style={styles.separadorRuta}> / </Text>
           <Text style={styles.rutaActual}>Administración</Text>
         </View>
 
+        {/* Encabezado de la pantalla */}
         <View style={styles.encabezadoSeccion}>
           <View style={styles.filaTitulo}>
             <View>
@@ -228,10 +234,12 @@ export default function AdministracionScreen() {
           </View>
         </View>
 
+        {/* SECCIÓN 1: GESTIÓN DE INFORMACIÓN */}
         <View style={styles.seccion}>
           <Text style={styles.tituloSeccion}>
             Gestión de información
           </Text>
+
           <Text style={styles.descripcionSeccion}>
             Consulta y administra los registros de la veterinaria.
           </Text>
@@ -268,13 +276,25 @@ export default function AdministracionScreen() {
                 router.push('/propietarioAdmin/gestionPropietarios')
               }
             />
+
+<TarjetaGestion
+  icono="💊"
+  titulo="Medicamentos"
+  descripcion="Consulta y administra el catálogo de medicamentos y vacunas."
+  indicadores={crearIndicadores(totales.medicamentos)}
+  cargando={cargandoIndicadores}
+  textoBoton="Gestionar medicamentos"
+  onPress={() => router.push('/medicamentosAdmin/medicamentos')}
+/>
           </View>
         </View>
 
+        {/* SECCIÓN 2: SEGUIMIENTO DEL SISTEMA */}
         <View style={styles.seccion}>
           <Text style={styles.tituloSeccion}>
             Seguimiento del sistema
           </Text>
+
           <Text style={styles.descripcionSeccion}>
             Revisa los indicadores y el historial de cambios.
           </Text>
@@ -299,6 +319,7 @@ export default function AdministracionScreen() {
         </View>
       </ScrollView>
 
+      {/* Menú lateral */}
       <MenuLateralDerecho
         visible={menuAbierto}
         onClose={() => setMenuAbierto(false)}

@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -9,8 +10,7 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+} from 'react-native';import { router, useLocalSearchParams } from 'expo-router';
 
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
@@ -92,7 +92,7 @@ export default function FichaPropietario() {
 
   // ======================================================
   // CARGAR PROPIETARIO Y MASCOTAS ASOCIADAS
-  // ======================================================
+  // ==================================================  // RF13 / RF14: cargar la información del propietario y sus mascotas.
   const cargarInformacion = useCallback(async () => {
     const id = Array.isArray(propietarioId)
       ? propietarioId[0]
@@ -107,22 +107,40 @@ export default function FichaPropietario() {
     setCargando(true);
     setError('');
 
+    let etapaConsulta = 'propietario';
+
     try {
+      // RF13: consultar la información del propietario.
       const datosPropietario = await consultarPropietarioPorId(id);
+
+      // RF14: consultar las mascotas asociadas.
+      etapaConsulta = 'mascotas';
       const datosMascotas = await consultarMascotasPorPropietario(id);
 
       setPropietario(datosPropietario);
       setMascotas(Array.isArray(datosMascotas) ? datosMascotas : []);
     } catch (e) {
       logger.error('Error al cargar la ficha del propietario:', e);
-      setError(
-        e?.message ||
-          'No se pudo cargar la información del propietario.'
-      );
+
+      if (e?.code === 'PROPIETARIO_NO_ENCONTRADO') {
+        setError(
+          'No se encontró la información del propietario solicitado.'
+        );
+      } else if (etapaConsulta === 'mascotas') {
+        setError(
+          'No se pudieron consultar las mascotas. Intente nuevamente.'
+        );
+      } else {
+        setError(
+          'No se pudo consultar la información del propietario. Intente nuevamente.'
+        );
+      }
     } finally {
       setCargando(false);
     }
   }, [propietarioId]);
+
+
 
   useEffect(() => {
     cargarPerfilUsuario();
@@ -483,7 +501,7 @@ const verFichaMascota = (mascota) => {
                   No hay mascotas registradas
                 </Text>
                 <Text style={styles.textoVacio}>
-                  Este propietario todavía no tiene mascotas asociadas.
+                 Este propietario no tiene mascotas asociadas.
                 </Text>
               </View>
             )}

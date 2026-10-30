@@ -1,28 +1,59 @@
 ﻿
 /**
  * RF03 - Servicio de recuperación de contraseña.
- * Incluye lógica comprobable mediante dependencias inyectadas y
- * operaciones reales mediante Supabase Auth.
+ *
+ * Responsabilidades:
+ * - Validar el formato del correo electrónico.
+ * - Validar los requisitos de la contraseña.
+ * - Solicitar enlaces de recuperación mediante Supabase Auth.
+ * - Verificar enlaces mediante dependencias inyectadas para pruebas.
+ * - Actualizar la contraseña mediante una sesión válida de Supabase.
+ *
+ * Arquitectura:
+ * - Servicio: concentra la lógica de negocio del RF03.
+ * - DAO/servicio externo: Supabase Auth administra la autenticación.
+ * - TDD: las dependencias inyectadas permiten probar la lógica aislada.
  */
 
 import { supabase } from './supabase';
 import * as Linking from 'expo-linking';
 import { logger } from '../utils/logger';
-// RF03: validar el formato básico del correo electrónico.
+
+// ============================================================
+// RF03 - VALIDACIONES
+// ============================================================
+
+/**
+ * RF03: valida el formato básico del correo electrónico.
+ *
+ * @param {string} correo
+ * @returns {boolean}
+ */
 export function correoTieneFormatoValido(correo) {
   // ARRANGE: normalizar el valor ingresado.
   const valor = String(correo || '').trim();
 
-  // ACT / ASSERT: comprobar el formato.
+  // ACT / ASSERT: comprobar el formato básico del correo.
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
 }
 
-// RF03: validar los requisitos mínimos de la contraseña.
+/**
+ * RF03: verifica los requisitos mínimos de la contraseña.
+ *
+ * Requisitos:
+ * - Mínimo 8 caracteres.
+ * - Al menos una mayúscula.
+ * - Al menos una minúscula.
+ * - Al menos un número.
+ *
+ * @param {string} contrasena
+ * @returns {boolean}
+ */
 export function contrasenaCumpleRequisitos(contrasena) {
-  // ARRANGE: convertir el valor a texto.
+  // ARRANGE: convertir el valor ingresado a texto.
   const valor = String(contrasena || '');
 
-  // ACT / ASSERT: verificar longitud, mayúscula, minúscula y número.
+  // ACT / ASSERT: comprobar todos los requisitos.
   return (
     valor.length >= 8 &&
     /[A-Z]/.test(valor) &&
@@ -31,7 +62,19 @@ export function contrasenaCumpleRequisitos(contrasena) {
   );
 }
 
-// RF03: crear el servicio aislado para las pruebas unitarias.
+// ============================================================
+// RF03 - SERVICIO AISLADO PARA PRUEBAS TDD
+// ============================================================
+
+/**
+ * Crea un servicio independiente de Supabase para pruebas unitarias.
+ *
+ * Las dependencias se inyectan desde fuera para que las pruebas
+ * puedan simular respuestas exitosas y fallos.
+ *
+ * @param {Object} dependencias
+ * @returns {Object}
+ */
 export function crearRecuperacionContrasenaServicio({
   enviarEnlace,
   verificarEnlace,
@@ -43,7 +86,9 @@ export function crearRecuperacionContrasenaServicio({
   // RF03: solicitar el envío de un enlace de recuperación.
   async function solicitarEnlace(correo) {
     // ARRANGE: normalizar el correo.
-    const correoNormalizado = String(correo || '').trim().toLowerCase();
+    const correoNormalizado = String(correo || '')
+      .trim()
+      .toLowerCase();
 
     // ASSERT: rechazar correos con formato incorrecto.
     if (!correoTieneFormatoValido(correoNormalizado)) {
@@ -54,7 +99,7 @@ export function crearRecuperacionContrasenaServicio({
     }
 
     try {
-      // ACT: consultar el contador de solicitudes.
+      // ACT: consultar el número de solicitudes anteriores.
       const solicitudes = await contarSolicitudes(correoNormalizado);
 
       // ASSERT: detener el proceso si se alcanzó el límite.
@@ -69,7 +114,7 @@ export function crearRecuperacionContrasenaServicio({
       // ACT: comprobar la existencia de la cuenta.
       const existe = await correoRegistrado(correoNormalizado);
 
-      // ASSERT: no enviar enlace si la cuenta no existe.
+      // ASSERT: no enviar el enlace si la cuenta no existe.
       if (!existe) {
         return {
           exito: false,
@@ -81,13 +126,20 @@ export function crearRecuperacionContrasenaServicio({
       // ACT: solicitar el envío del enlace.
       await enviarEnlace(correoNormalizado);
 
-      // ASSERT: devolver la confirmación de envío.
+      // ASSERT: confirmar la solicitud.
       return {
         exito: true,
-        mensaje: 'Se envió el enlace de recuperación al correo electrónico.',
+        mensaje:
+          'Se envió el enlace de recuperación al correo electrónico.',
       };
     } catch (error) {
       // ASSERT: devolver un mensaje controlado ante fallos.
+      if (__DEV__) {
+        logger.error(
+          'RF03 - Error controlado al solicitar la recuperación.'
+        );
+      }
+
       return {
         exito: false,
         mensaje:
@@ -96,7 +148,7 @@ export function crearRecuperacionContrasenaServicio({
     }
   }
 
-  // RF03: comprobar la validez del enlace.
+  // RF03: comprobar la validez del enlace de recuperación.
   async function validarEnlace(token) {
     // ASSERT: rechazar la ausencia de token.
     if (!token) {
@@ -108,7 +160,7 @@ export function crearRecuperacionContrasenaServicio({
     }
 
     try {
-      // ACT: consultar la validez del token.
+      // ACT: verificar el token mediante la dependencia inyectada.
       const valido = await verificarEnlace(token);
 
       // ASSERT: impedir continuar con un token inválido.
@@ -120,9 +172,19 @@ export function crearRecuperacionContrasenaServicio({
         };
       }
 
-      return { exito: true, mensaje: '' };
+      // ASSERT: permitir continuar cuando el enlace es válido.
+      return {
+        exito: true,
+        mensaje: '',
+      };
     } catch (error) {
-      // ASSERT: no permitir el cambio cuando falla la verificación.
+      // ASSERT: no permitir el cambio si falla la verificación.
+      if (__DEV__) {
+        logger.error(
+          'RF03 - Error controlado al verificar el enlace.'
+        );
+      }
+
       return {
         exito: false,
         mensaje:
@@ -142,16 +204,16 @@ export function crearRecuperacionContrasenaServicio({
       };
     }
 
-    // ACT: validar el enlace.
+    // ACT: verificar el enlace antes de cambiar la contraseña.
     const resultadoEnlace = await validarEnlace(token);
 
-    // ASSERT: no actualizar la contraseña si el enlace no es válido.
+    // ASSERT: detener el proceso si el enlace no es válido.
     if (!resultadoEnlace.exito) {
       return resultadoEnlace;
     }
 
     try {
-      // ACT: actualizar la contraseña.
+      // ACT: actualizar la contraseña mediante la dependencia.
       await establecerContrasena(nuevaContrasena);
 
       // ASSERT: confirmar el cambio.
@@ -160,15 +222,22 @@ export function crearRecuperacionContrasenaServicio({
         mensaje: 'La contraseña se actualizó correctamente.',
       };
     } catch (error) {
-      // ASSERT: informar el error de actualización.
+      // ASSERT: devolver un mensaje controlado.
+      if (__DEV__) {
+        logger.error(
+          'RF03 - Error controlado al actualizar la contraseña.'
+        );
+      }
+
       return {
         exito: false,
-        mensaje: 'No se pudo actualizar la contraseña. Intente nuevamente.',
+        mensaje:
+          'No se pudo actualizar la contraseña. Intente nuevamente.',
       };
     }
   }
 
-  // Exponer las operaciones que utilizarán las pruebas.
+  // Exponer las operaciones para las pruebas unitarias.
   return {
     solicitarEnlace,
     validarEnlace,
@@ -176,11 +245,27 @@ export function crearRecuperacionContrasenaServicio({
   };
 }
 
-// RF03 REAL: enviar el correo mediante Supabase Auth.
-export async function enviarEnlaceRecuperacion(correo) {
-  // ARRANGE: validar el correo antes de llamar a Supabase.
-  const correoNormalizado = String(correo || '').trim().toLowerCase();
+// ============================================================
+// RF03 - IMPLEMENTACIÓN REAL CON SUPABASE AUTH
+// ============================================================
 
+/**
+ * Envía el enlace de recuperación mediante Supabase Auth.
+ *
+ * Nota:
+ * El correo debe configurarse en Supabase y la URL de redirección
+ * debe estar permitida en la configuración de autenticación.
+ *
+ * @param {string} correo
+ * @returns {Promise<{exito: boolean, mensaje: string}>}
+ */
+export async function enviarEnlaceRecuperacion(correo) {
+  // ARRANGE: normalizar el correo.
+  const correoNormalizado = String(correo || '')
+    .trim()
+    .toLowerCase();
+
+  // ASSERT: validar el formato antes de llamar a Supabase.
   if (!correoTieneFormatoValido(correoNormalizado)) {
     return {
       exito: false,
@@ -189,9 +274,12 @@ export async function enviarEnlaceRecuperacion(correo) {
   }
 
   try {
-    // ACT: solicitar a Supabase que envíe el enlace.
-    const urlRecuperacion = Linking.createURL('restablecerContrasena');
-    logger.info('RF03 - URL de recuperación:', urlRecuperacion);
+    // ARRANGE: construir la URL de retorno de la aplicación.
+    const urlRecuperacion = Linking.createURL(
+      'restablecerContrasena'
+    );
+
+    // ACT: solicitar a Supabase el envío del enlace.
     const { error } = await supabase.auth.resetPasswordForEmail(
       correoNormalizado,
       {
@@ -199,18 +287,35 @@ export async function enviarEnlaceRecuperacion(correo) {
       }
     );
 
+    // ASSERT: tratar el error sin registrar URL ni datos sensibles.
     if (error) {
-      throw error;
+      if (__DEV__) {
+        logger.error(
+          'RF03 - Supabase no pudo enviar el enlace de recuperación.'
+        );
+      }
+
+      return {
+        exito: false,
+        mensaje:
+          'No se pudo enviar el enlace de recuperación. Intente nuevamente más tarde.',
+      };
     }
 
-    // ASSERT: devolver el resultado exitoso.
+    // ASSERT: devolver la confirmación de la solicitud.
     return {
       exito: true,
-      mensaje: 'Se envió el enlace de recuperación al correo electrónico.',
+      mensaje:
+        'Se envió el enlace de recuperación al correo electrónico.',
     };
   } catch (error) {
-    logger.error('RF03 - Error al enviar recuperación:', error?.message || error);
-    // ASSERT: no exponer detalles internos del proveedor.
+    // ASSERT: controlar errores inesperados sin exponer detalles internos.
+    if (__DEV__) {
+      logger.error(
+        'RF03 - Ocurrió un error controlado al solicitar la recuperación.'
+      );
+    }
+
     return {
       exito: false,
       mensaje:
@@ -219,9 +324,20 @@ export async function enviarEnlaceRecuperacion(correo) {
   }
 }
 
-// RF03 REAL: actualizar la contraseña de la sesión de recuperación.
-export async function actualizarContrasenaRecuperada(nuevaContrasena) {
-  // ARRANGE: validar la nueva contraseña.
+/**
+ * Actualiza la contraseña del usuario autenticado en el flujo
+ * de recuperación.
+ *
+ * Supabase debe tener una sesión válida establecida por el proceso
+ * de recuperación antes de ejecutar esta operación.
+ *
+ * @param {string} nuevaContrasena
+ * @returns {Promise<{exito: boolean, mensaje: string}>}
+ */
+export async function actualizarContrasenaRecuperada(
+  nuevaContrasena
+) {
+  // ARRANGE: validar los requisitos de la nueva contraseña.
   if (!contrasenaCumpleRequisitos(nuevaContrasena)) {
     return {
       exito: false,
@@ -232,9 +348,13 @@ export async function actualizarContrasenaRecuperada(nuevaContrasena) {
 
   try {
     // ARRANGE: comprobar que Supabase tenga una sesión válida.
-    const { data, error: errorSesion } = await supabase.auth.getSession();
+    const {
+      data,
+      error: errorSesion,
+    } = await supabase.auth.getSession();
 
-    if (errorSesion || !data.session) {
+    // ASSERT: no actualizar si no hay sesión válida.
+    if (errorSesion || !data?.session) {
       return {
         exito: false,
         mensaje:
@@ -242,27 +362,43 @@ export async function actualizarContrasenaRecuperada(nuevaContrasena) {
       };
     }
 
-    // ACT: solicitar a Supabase el cambio de contraseña.
+    // ACT: solicitar a Supabase la actualización de contraseña.
     const { error } = await supabase.auth.updateUser({
       password: nuevaContrasena,
     });
 
+    // ASSERT: comprobar si Supabase rechazó la actualización.
     if (error) {
-      throw error;
+      if (__DEV__) {
+        logger.error(
+          'RF03 - Supabase no pudo actualizar la contraseña.'
+        );
+      }
+
+      return {
+        exito: false,
+        mensaje:
+          'No se pudo actualizar la contraseña. Intente nuevamente.',
+      };
     }
 
-    // ASSERT: informar que la contraseña se actualizó.
+    // ASSERT: confirmar la actualización.
     return {
       exito: true,
       mensaje: 'La contraseña se actualizó correctamente.',
     };
   } catch (error) {
-    // ASSERT: devolver un mensaje controlado.
+    // ASSERT: controlar fallos inesperados.
+    if (__DEV__) {
+      logger.error(
+        'RF03 - Ocurrió un error controlado al actualizar la contraseña.'
+      );
+    }
+
     return {
       exito: false,
-      mensaje: 'No se pudo actualizar la contraseña. Intente nuevamente.',
+      mensaje:
+        'No se pudo actualizar la contraseña. Intente nuevamente.',
     };
   }
 }
-
-

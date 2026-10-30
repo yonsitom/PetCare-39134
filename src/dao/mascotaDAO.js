@@ -357,3 +357,106 @@ export async function consultarMascotasPorPropietario(
 
   return data ?? [];
 }
+
+/**
+ * RF46 / CUS46 — DAO de administración.
+ *
+ * Estas consultas incluyen mascotas activas e inactivas para que
+ * el administrador pueda buscar y volver a activar registros.
+ * Se mantienen separadas de las consultas existentes para no
+ * alterar el comportamiento de otros módulos.
+ */
+export async function consultarMascotasAdministracionDAO() {
+  const { data, error } = await supabase
+    .from('mascotas')
+    .select(relacionPropietario)
+    .order('nombre', { ascending: true });
+
+  if (error) {
+    logger.error(
+      'Error al consultar mascotas para administración:',
+      error
+    );
+    throw error;
+  }
+
+  return data ?? [];
+}
+
+/**
+ * Busca por nombre, historia clínica o especie sin excluir
+ * registros inactivos.
+ */
+export async function buscarMascotasAdministracionDAO(termino) {
+  const texto = validarTerminoBusqueda(termino);
+
+  if (!texto) {
+    throw new Error(
+      'Ingresa un dato para realizar la búsqueda de la mascota.'
+    );
+  }
+
+  const patron = `%${texto}%`;
+
+  const { data, error } = await supabase
+    .from('mascotas')
+    .select(relacionPropietario)
+    .or(
+      `nombre.ilike.${patron},numero_historia.ilike.${patron},especie.ilike.${patron}`
+    )
+    .order('nombre', { ascending: true });
+
+  if (error) {
+    logger.error(
+      'Error al buscar mascotas para administración:',
+      error
+    );
+    throw error;
+  }
+
+  return data ?? [];
+}
+
+/**
+ * Actualiza el estado y el motivo de desactivación.
+ * Devuelve el registro actualizado o null si no existe.
+ */
+export async function cambiarEstadoMascotaDAO({
+  numeroHistoria,
+  nuevoEstado,
+  motivo = '',
+}) {
+  if (!numeroHistoria) {
+    throw new Error(
+      'Debe indicar el número de historia de la mascota.'
+    );
+  }
+
+  if (!['Activo', 'Inactivo'].includes(nuevoEstado)) {
+    throw new Error('El estado indicado no es válido.');
+  }
+
+  const cambios = {
+    estado: nuevoEstado,
+    motivo_desactivacion:
+      nuevoEstado === 'Inactivo' ? String(motivo).trim() : null,
+  };
+
+  const { data, error } = await supabase
+    .from('mascotas')
+    .update(cambios)
+    .eq('numero_historia', numeroHistoria)
+    .select(relacionPropietario)
+    .maybeSingle();
+
+  if (error) {
+    logger.error(
+      'Error al cambiar el estado de la mascota:',
+      error
+    );
+    throw error;
+  }
+
+  return data ?? null;
+}
+

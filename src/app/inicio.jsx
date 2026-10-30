@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   useCallback,
   useEffect,
   useMemo,
@@ -19,12 +19,8 @@ import { router, useFocusEffect } from 'expo-router';
 
 import { supabase } from '../services/supabase';
 import { consultarPerfilPorId } from '../dao/perfilDAO';
-import { crearControladorRolUsuario } from '../services/rolUsuarioControlador';
-
-import {
-  consultarResumenInicio,
-  consultarIndicadoresInicio,
-} from '../services/panelInicioServicio';
+import { crearControladorRolUsuario } from '../controllers/autenticacion/rolUsuarioControlador';
+import { crearControladorInicio } from '../controllers/inicio/inicioControlador';
 
 import MenuLateralDerecho from '../components/layout/MenuLateralDerecho';
 import EncabezadoPetCare from '../components/layout/EncabezadoPetCare';
@@ -46,6 +42,8 @@ const C = {
   azulClaro: '#DBEAFE',
   azul: '#3B82F6',
 };
+
+const controladorInicio = crearControladorInicio();
 
 const FUNCIONES_VACIAS = {
   atenciones: false,
@@ -100,7 +98,7 @@ function obtenerFechaActual() {
 function formatearFecha(fecha) {
   if (!fecha) return 'Fecha no disponible';
 
-  const partes = fecha.split('-');
+  const partes = String(fecha).split('-');
 
   if (partes.length !== 3) return fecha;
 
@@ -168,7 +166,6 @@ export default function InicioScreen() {
 
         cerrarSesion: async () => {
           const { error } = await supabase.auth.signOut();
-
           if (error) throw error;
         },
       }),
@@ -209,8 +206,7 @@ export default function InicioScreen() {
         return false;
       }
 
-      const resultado =
-        await controladorRol.identificarRol(usuario.id);
+      const resultado = await controladorRol.identificarRol(usuario.id);
 
       if (!resultado.autorizado) {
         setNombre('');
@@ -258,8 +254,8 @@ export default function InicioScreen() {
   }, [controladorRol]);
 
   /*
-   * RF08: cargar el resumen de atenciones y actividades.
-   * La consulta se delega al servicio, no a la interfaz.
+   * RF08: cargar resumen de atenciones y actividades.
+   * La consulta del resumen se delega al controlador.
    */
   const cargarIndicadores = useCallback(async () => {
     if (!accesoAutorizado) {
@@ -274,7 +270,7 @@ export default function InicioScreen() {
     setErrorIndicadores('');
 
     try {
-      const resumen = await consultarResumenInicio();
+      const resumen = await controladorInicio.cargarResumen();
 
       setIndicadores((actuales) => ({
         ...actuales,
@@ -292,7 +288,7 @@ export default function InicioScreen() {
     }
 
     /*
-     * Consulta independiente de citas programadas.
+     * RF08: consulta independiente de citas programadas.
      * Si falla, el resumen del panel sigue disponible.
      */
     setCargandoCitas(true);
@@ -317,10 +313,11 @@ export default function InicioScreen() {
         String(fechaLimite.getDate()).padStart(2, '0'),
       ].join('-');
 
+      // RF08: consulta de las columnas utilizadas en public.citas.
       const { data, error } = await supabase
         .from('citas')
         .select(
-          'cita_id, numero_historia, fecha_programada, hora_cita, estado_confirmacion'
+          'cita_id, numero_historia, fecha_programada, hora_cita, estado'
         )
         .gte('fecha_programada', fechaHoy)
         .lte('fecha_programada', fechaMaxima)
@@ -330,17 +327,18 @@ export default function InicioScreen() {
       if (error) throw error;
 
       const citasFiltradas = (data || []).filter(
-        (cita) => !excluirCitaPorEstado(cita.estado_confirmacion)
+        (cita) => !excluirCitaPorEstado(cita.estado)
       );
 
       setProximasCitas(citasFiltradas);
     } catch (error) {
-      logger.error('Error al consultar las próximas citas:', error);
+      logger.error(
+        'RF08: error al consultar las próximas citas:',
+        error
+      );
 
       setProximasCitas([]);
-      setErrorCitas(
-        'No se pudieron consultar las próximas citas.'
-      );
+      setErrorCitas('No se pudieron consultar las próximas citas.');
     } finally {
       setCargandoCitas(false);
     }
@@ -364,7 +362,7 @@ export default function InicioScreen() {
     setErrorAtencionesActivas('');
 
     try {
-      const resultado = await consultarIndicadoresInicio();
+      const resultado = await controladorInicio.cargarIndicadores();
 
       setIndicadores((actuales) => ({
         ...actuales,
@@ -385,21 +383,19 @@ export default function InicioScreen() {
   }, [accesoAutorizado]);
 
   /*
-   * RF09: navegar al módulo Atenciones.
-   * MVC: la vista solicita la navegación; el servicio conserva
-   * la responsabilidad de consultar los datos.
+   * RF09: navegar al módulo Atenciones con el estado Activa.
    */
-const abrirAtenciones = useCallback(() => {
-  router.push({
-    pathname: '/atenciones',
-    params: {
-      estado: 'Activa',
-    },
-  });
-}, [router]);
+  const abrirAtenciones = useCallback(() => {
+    router.push({
+      pathname: '/atenciones',
+      params: {
+        estado: 'Activa',
+      },
+    });
+  }, []);
+
   /*
-   * RF10: navegar al módulo Atenciones con el estado seleccionado.
-   * Se envía el estado como parámetro de navegación.
+   * RF10: navegar al módulo Atenciones con el estado de actividad elegido.
    */
   const abrirActividadesPorEstado = useCallback((estado) => {
     router.push({
@@ -420,7 +416,7 @@ const abrirAtenciones = useCallback(() => {
   );
 
   /*
-   * RF08 y RF09: cargar los datos cuando el perfil está autorizado.
+   * RF08 y RF09: cargar datos cuando el perfil está autorizado.
    */
   useEffect(() => {
     if (!cargandoPerfil && accesoAutorizado) {
@@ -435,14 +431,14 @@ const abrirAtenciones = useCallback(() => {
   ]);
 
   /*
-   * RF08 y RF09: actualizar los indicadores y las citas.
+   * RF08 y RF09: actualizar indicadores y citas.
    */
-  async function actualizarInicio() {
+  const actualizarInicio = useCallback(async () => {
     await Promise.all([
       cargarIndicadores(),
       cargarAtencionesActivas(),
     ]);
-  }
+  }, [cargarIndicadores, cargarAtencionesActivas]);
 
   /*
    * RF07: cerrar sesión.
@@ -539,7 +535,7 @@ const abrirAtenciones = useCallback(() => {
       >
         <Text style={styles.migaActiva}>Inicio</Text>
 
-        {/* Bienvenida compartida por ambos roles */}
+        {/* RF02: bienvenida compartida por ambos roles */}
         <View style={styles.bienvenida}>
           <View style={styles.bienvenidaTexto}>
             <Text style={styles.saludo}>¡Bienvenida!</Text>
@@ -583,7 +579,7 @@ const abrirAtenciones = useCallback(() => {
           )}
         </View>
 
-        {/* RF09: contador de atenciones activas y acceso al listado */}
+        {/* RF09: contador de atenciones activas */}
         <TouchableOpacity
           style={styles.tarjetaActivas}
           onPress={abrirAtenciones}
@@ -601,7 +597,7 @@ const abrirAtenciones = useCallback(() => {
             </Text>
 
             <Text style={styles.enlaceActivas}>
-              Ver atenciones {'→'}
+              Ver atenciones →
             </Text>
           </View>
 
@@ -630,9 +626,7 @@ const abrirAtenciones = useCallback(() => {
               activeOpacity={0.8}
             >
               <Text style={styles.textoBotonReintentarIndicadores}>
-                {cargandoAtencionesActivas
-                  ? 'Cargando...'
-                  : 'Reintentar'}
+                {cargandoAtencionesActivas ? 'Cargando...' : 'Reintentar'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -683,7 +677,7 @@ const abrirAtenciones = useCallback(() => {
           </View>
         ) : null}
 
-        {/* RF10: tarjetas interactivas para consultar actividades por estado */}
+        {/* RF10: tarjetas para consultar actividades por estado */}
         <View style={styles.grilla}>
           <TarjetaIndicador
             icono="◷"
@@ -716,7 +710,7 @@ const abrirAtenciones = useCallback(() => {
           />
         </View>
 
-        {/* Próximas citas: sección independiente */}
+        {/* RF08: próximas citas programadas */}
         <View style={styles.tarjetaProximas}>
           <View style={styles.encabezadoProximas}>
             <View style={styles.iconoProximas}>
@@ -725,7 +719,7 @@ const abrirAtenciones = useCallback(() => {
 
             <View style={styles.textosProximas}>
               <Text style={styles.tituloSeccion}>
-                Próximas a vencer
+                Próximas citas
               </Text>
 
               <Text style={styles.descripcionProximas}>
@@ -753,6 +747,7 @@ const abrirAtenciones = useCallback(() => {
               <TouchableOpacity
                 style={styles.botonReintentarIndicadores}
                 onPress={actualizarInicio}
+                disabled={cargandoCitas}
                 activeOpacity={0.8}
               >
                 <Text style={styles.textoBotonReintentarIndicadores}>
@@ -762,7 +757,7 @@ const abrirAtenciones = useCallback(() => {
             </View>
           ) : proximasCitas.length === 0 ? (
             <Text style={styles.descripcionProximas}>
-              No hay citas próximas programadas.
+              No hay próximas citas programadas.
             </Text>
           ) : (
             proximasCitas.map((cita) => (
@@ -784,7 +779,7 @@ const abrirAtenciones = useCallback(() => {
                   </Text>
 
                   <Text style={styles.descripcionProximas}>
-                    Estado: {cita.estado_confirmacion || 'Sin confirmar'}
+                    Estado: {cita.estado || 'Sin estado'}
                   </Text>
                 </View>
               </View>
@@ -801,7 +796,7 @@ const abrirAtenciones = useCallback(() => {
         </View>
       </ScrollView>
 
-      {/* El menú lateral mantiene las opciones según el rol */}
+      {/* RF02: menú lateral con opciones según el rol */}
       <MenuLateralDerecho
         visible={menuAbierto}
         onCerrar={() => setMenuAbierto(false)}
@@ -814,8 +809,8 @@ const abrirAtenciones = useCallback(() => {
 }
 
 /*
- * RF08: componente reutilizable de presentación de indicadores.
- * RF10: permite pulsar una tarjeta para navegar con el estado elegido.
+ * RF08: componente reutilizable para presentar los indicadores.
+ * RF10: permite navegar según el estado seleccionado.
  */
 function TarjetaIndicador({
   icono,
