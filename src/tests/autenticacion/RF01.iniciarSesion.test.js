@@ -1,7 +1,7 @@
 
-import { crearControladorInicioSesion } from '../../services/iniciarSesionControlador';
+import { crearControladorInicioSesion } from '../../controllers/autenticacion/iniciarSesionControlador';
 
-describe('RF01 - Iniciar sesión con correo electrónico y contraseña', () => {
+describe('RF01 - Iniciar sesion con correo electrÃ³nico y contraseÃ±a', () => {
   let autenticar;
   let verificarCuentaActiva;
   let cerrarSesion;
@@ -25,7 +25,7 @@ describe('RF01 - Iniciar sesión con correo electrónico y contraseña', () => {
     });
   });
 
-  test('CP01 - autentica credenciales válidas y permite ir al panel principal', async () => {
+  test('CP01 - autentica credenciales vÃ¡lidas y permite ir al panel principal', async () => {
     // ARRANGE
     const usuario = {
       id: 'usuario-001',
@@ -82,7 +82,7 @@ describe('RF01 - Iniciar sesión con correo electrónico y contraseña', () => {
     expect(autenticar).not.toHaveBeenCalled();
   });
 
-  test('CP03 - rechaza un correo inválido sin autenticar', async () => {
+  test('CP03 - rechaza un correo invalido sin autenticar', async () => {
     // ARRANGE
     const correo = 'asistente@veterinaria';
     const contrasena = contrasenaCorrecta;
@@ -124,7 +124,7 @@ describe('RF01 - Iniciar sesión con correo electrónico y contraseña', () => {
     expect(cerrarSesion).not.toHaveBeenCalled();
   });
 
-  test('CP05 - un error de conexión no autentica ni cuenta como contraseña incorrecta', async () => {
+  test('CP05 - un error de conexiÃ³n no autentica ni cuenta como contraseÃ±a incorrecta', async () => {
     // ARRANGE
     autenticar.mockRejectedValue(
       new Error('Network request failed')
@@ -145,7 +145,7 @@ describe('RF01 - Iniciar sesión con correo electrónico y contraseña', () => {
     expect(verificarCuentaActiva).not.toHaveBeenCalled();
   });
 
-  test('CP06 - bloquea nuevos intentos cuando el contador ya llegó a cinco', async () => {
+  test('CP06 - bloquea nuevos intentos cuando el contador ya llegÃ³ a cinco', async () => {
     // ARRANGE
     controlador = crearControladorInicioSesion({
       autenticar,
@@ -171,3 +171,4 @@ describe('RF01 - Iniciar sesión con correo electrónico y contraseña', () => {
     expect(verificarCuentaActiva).not.toHaveBeenCalled();
   });
 });
+

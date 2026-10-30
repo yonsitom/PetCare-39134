@@ -11,13 +11,13 @@ import {
   Modal,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import {
@@ -27,9 +27,9 @@ import {
 } from '../controllers/atenciones/atencionesControlador';
 
 import { obtenerActividadesPorEstado } from '../services/actividadesServicio';
-import { validarDatosAtencion } from '../utils/validacionesAtencion';
 import EncabezadoPetCare from '../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../components/layout/MenuLateralDerecho';
+import { validarDatosAtencion } from '../utils/validacionesAtencion';
 import { logger } from '../utils/logger';
 
 const C = {
@@ -112,6 +112,7 @@ export default function AtencionesScreen() {
   const [busquedaListado, setBusquedaListado] = useState('');
   const [busquedaFormulario, setBusquedaFormulario] = useState('');
   const [mascotaSeleccionada, setMascotaSeleccionada] = useState(null);
+  const [motivoConsulta, setMotivoConsulta] = useState('');
   const [observaciones, setObservaciones] = useState('');
 
   const [nombreUsuario, setNombreUsuario] = useState('');
@@ -155,7 +156,7 @@ export default function AtencionesScreen() {
     }
   }, []);
 
-  // RF10: las actividades siguen consultándose mediante su servicio.
+  // RF10: consulta las actividades para construir los filtros.
   const cargarActividades = useCallback(async () => {
     setErrorActividades('');
 
@@ -208,7 +209,7 @@ export default function AtencionesScreen() {
     return agrupadas;
   }, [actividades]);
 
-  // RF09 y RF10: filtros del listado.
+  // RF09 y RF10: filtra las atenciones por estado, búsqueda y actividad.
   const atencionesFiltradas = useMemo(() => {
     const busqueda = busquedaListado.trim().toLowerCase();
 
@@ -253,7 +254,7 @@ export default function AtencionesScreen() {
     estadoActividad,
   ]);
 
-  // Cantidades de atenciones por estado.
+  // Calcula los contadores manteniendo los filtros de búsqueda.
   const cantidadesFiltros = useMemo(() => {
     const busqueda = busquedaListado.trim().toLowerCase();
 
@@ -300,7 +301,7 @@ export default function AtencionesScreen() {
     estadoActividad,
   ]);
 
-  // Buscador de mascotas del formulario.
+  // RF22: búsqueda de mascotas activas para registrar una atención.
   const mascotasFiltradas = useMemo(() => {
     const busqueda = busquedaFormulario.trim().toLowerCase();
 
@@ -310,15 +311,31 @@ export default function AtencionesScreen() {
         mascota.numero_historia || ''
       ).toLowerCase();
 
+      const especie = String(
+        mascota.especie || ''
+      ).toLowerCase();
+
+      const propietario = mascota.propietarios || {};
+      const nombrePropietario = [
+        propietario.nombre,
+        propietario.apellido,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
       return (
         nombre.includes(busqueda) ||
-        historia.includes(busqueda)
+        historia.includes(busqueda) ||
+        especie.includes(busqueda) ||
+        nombrePropietario.includes(busqueda)
       );
     });
   }, [mascotas, busquedaFormulario]);
 
   function abrirFormulario() {
     setMascotaSeleccionada(null);
+    setMotivoConsulta('');
     setObservaciones('');
     setBusquedaFormulario('');
     setModalRegistro(true);
@@ -329,16 +346,18 @@ export default function AtencionesScreen() {
 
     setModalRegistro(false);
     setMascotaSeleccionada(null);
+    setMotivoConsulta('');
     setObservaciones('');
     setBusquedaFormulario('');
   }
 
-  // Registro delegado al controlador.
+  // RF22 y RF23: la vista valida y delega la operación al controlador.
   async function guardarAtencion() {
     if (guardando) return;
 
     const validacion = validarDatosAtencion({
       numero_historia: mascotaSeleccionada?.numero_historia ?? '',
+      motivo_consulta: motivoConsulta,
       observaciones,
     });
 
@@ -347,16 +366,26 @@ export default function AtencionesScreen() {
       return;
     }
 
+    if (!motivoConsulta.trim()) {
+      Alert.alert(
+        'Campo obligatorio',
+        'El motivo de consulta es obligatorio.'
+      );
+      return;
+    }
+
     setGuardando(true);
 
     try {
       await crearAtencion({
         numero_historia: mascotaSeleccionada.numero_historia,
-        observaciones,
+        motivo_consulta: motivoConsulta.trim(),
+        observaciones: observaciones.trim(),
       });
 
       setModalRegistro(false);
       setMascotaSeleccionada(null);
+      setMotivoConsulta('');
       setObservaciones('');
       setBusquedaFormulario('');
 
@@ -710,7 +739,7 @@ export default function AtencionesScreen() {
                   Registrar atención
                 </Text>
                 <Text style={estilos.modalDescripcion}>
-                  Selecciona la mascota para iniciar la atención.
+                  Selecciona la mascota y completa el motivo de consulta.
                 </Text>
               </View>
 
@@ -740,7 +769,7 @@ export default function AtencionesScreen() {
                   setBusquedaFormulario(texto);
                   setMascotaSeleccionada(null);
                 }}
-                placeholder="Nombre o número de historia"
+                placeholder="Nombre, historia o propietario"
                 placeholderTextColor={C.secundario}
                 editable={!guardando}
               />
@@ -787,6 +816,18 @@ export default function AtencionesScreen() {
                         {' · Historia: '}
                         {mascota.numero_historia}
                       </Text>
+
+                      {mascota.propietarios ? (
+                        <Text style={estilos.subtexto}>
+                          Propietario:{' '}
+                          {[
+                            mascota.propietarios.nombre,
+                            mascota.propietarios.apellido,
+                          ]
+                            .filter(Boolean)
+                            .join(' ') || 'No registrado'}
+                        </Text>
+                      ) : null}
                     </Pressable>
                   ))}
 
@@ -797,6 +838,20 @@ export default function AtencionesScreen() {
                   ) : null}
                 </View>
               )}
+
+              <Text style={estilos.etiquetaCampo}>
+                Motivo de consulta *
+              </Text>
+
+              <TextInput
+                style={estilos.busqueda}
+                value={motivoConsulta}
+                onChangeText={setMotivoConsulta}
+                placeholder="Describe el motivo de la atención..."
+                placeholderTextColor={C.secundario}
+                editable={!guardando}
+                maxLength={500}
+              />
 
               <Text style={estilos.etiquetaCampo}>
                 Observaciones
@@ -811,11 +866,12 @@ export default function AtencionesScreen() {
                 multiline
                 textAlignVertical="top"
                 editable={!guardando}
+                maxLength={2000}
               />
 
               <Text style={estilos.notaFormulario}>
                 La fecha de inicio se registra automáticamente y el estado
-                inicial será Activa.
+                inicial será Activa. La consulta se guarda con estado Pendiente.
               </Text>
 
               <View style={estilos.botonesModal}>
@@ -861,3 +917,464 @@ export default function AtencionesScreen() {
     </SafeAreaView>
   );
 }
+
+const estilos = StyleSheet.create({
+  contenedor: {
+    flex: 1,
+    backgroundColor: C.fondo,
+  },
+  contenido: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 30,
+  },
+  migas: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  textoMiga: {
+    color: C.secundario,
+    fontSize: 13,
+  },
+  migaActual: {
+    color: C.verde,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  encabezadoPagina: {
+    gap: 14,
+    marginBottom: 22,
+  },
+  tituloContenedor: {
+    flex: 1,
+  },
+  titulo: {
+    color: C.texto,
+    fontSize: 28,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  descripcion: {
+    color: C.secundario,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  botonNuevaAtencion: {
+    alignSelf: 'flex-start',
+    backgroundColor: C.verde,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  botonNuevaAtencionTexto: {
+    color: C.blanco,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  etiquetaCampo: {
+    color: C.texto,
+    fontWeight: '700',
+    fontSize: 14,
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  busqueda: {
+    minHeight: 48,
+    backgroundColor: C.blanco,
+    borderColor: C.borde,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: C.texto,
+    fontSize: 14,
+  },
+  tituloFiltros: {
+    color: C.texto,
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 22,
+    marginBottom: 10,
+  },
+  filtros: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  botonFiltro: {
+    borderColor: C.borde,
+    borderWidth: 1,
+    backgroundColor: C.blanco,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  botonFiltroActivo: {
+    backgroundColor: C.verde,
+    borderColor: C.verde,
+  },
+  textoFiltro: {
+    color: C.texto,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  textoFiltroActivo: {
+    color: C.blanco,
+  },
+  filtroActividadActivo: {
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: C.verdeClaro,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  textoFiltroActividad: {
+    color: C.verdeOscuro,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  quitarFiltroActividad: {
+    color: C.verde,
+    fontWeight: '700',
+    fontSize: 13,
+    paddingVertical: 4,
+  },
+  avisoActividades: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: C.naranja,
+    gap: 6,
+  },
+  textoAvisoActividades: {
+    color: C.naranjaTexto,
+    fontSize: 13,
+  },
+  encabezadoListado: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 26,
+    marginBottom: 14,
+  },
+  tituloListado: {
+    color: C.texto,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  contador: {
+    minWidth: 30,
+    textAlign: 'center',
+    overflow: 'hidden',
+    backgroundColor: C.verdeClaro,
+    color: C.verdeOscuro,
+    borderRadius: 16,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    fontWeight: '800',
+  },
+  estadoVacio: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.blanco,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.borde,
+    paddingHorizontal: 22,
+    paddingVertical: 32,
+    marginTop: 6,
+  },
+  iconoVacio: {
+    color: C.verde,
+    fontSize: 34,
+    marginBottom: 10,
+  },
+  tituloVacio: {
+    color: C.texto,
+    fontWeight: '800',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 7,
+  },
+  textoVacio: {
+    color: C.secundario,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  tarjetaError: {
+    backgroundColor: C.blanco,
+    borderColor: '#F3CACA',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  iconoError: {
+    color: C.rojoTexto,
+    fontSize: 30,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  tituloError: {
+    color: C.texto,
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  textoError: {
+    color: C.secundario,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  botonReintentar: {
+    marginTop: 16,
+    minWidth: 130,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.verde,
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  textoBotonReintentar: {
+    color: C.blanco,
+    fontWeight: '700',
+  },
+  tarjetaAtencion: {
+    backgroundColor: C.blanco,
+    borderWidth: 1,
+    borderColor: C.borde,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+  },
+  filaTarjeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  iconoMascota: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: C.verdeClaro,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconoMascotaTexto: {
+    color: C.verde,
+    fontSize: 27,
+  },
+  datosAtencion: {
+    flex: 1,
+  },
+  nombreMascota: {
+    color: C.texto,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  subtexto: {
+    color: C.secundario,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  etiquetaEstado: {
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: 115,
+  },
+  textoEstado: {
+    fontSize: 11,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  separador: {
+    height: 1,
+    backgroundColor: C.borde,
+    marginVertical: 14,
+  },
+  filaFecha: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 8,
+  },
+  etiquetaDetalle: {
+    color: C.secundario,
+    fontSize: 12,
+  },
+  valorDetalle: {
+    color: C.texto,
+    fontSize: 12,
+    fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'right',
+  },
+  abrirDetalle: {
+    color: C.verde,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 10,
+  },
+  pie: {
+    color: C.secundario,
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 22,
+    lineHeight: 18,
+  },
+  fondoModal: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(15, 30, 35, 0.48)',
+  },
+  modal: {
+    maxHeight: '92%',
+    backgroundColor: C.fondo,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 28,
+  },
+  encabezadoModal: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  modalTituloContenedor: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  modalTitulo: {
+    color: C.texto,
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 5,
+  },
+  modalDescripcion: {
+    color: C.secundario,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  botonCerrarModal: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: C.blanco,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  botonCerrarTexto: {
+    color: C.texto,
+    fontSize: 28,
+    lineHeight: 30,
+  },
+  mascotaElegida: {
+    backgroundColor: C.verdeClaro,
+    borderColor: '#B7DED1',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 10,
+  },
+  mascotaElegidaNombre: {
+    color: C.verdeOscuro,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 5,
+  },
+  cambiarMascota: {
+    color: C.verde,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 10,
+  },
+  listaMascotas: {
+    backgroundColor: C.blanco,
+    borderColor: C.borde,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginTop: 8,
+    maxHeight: 220,
+    overflow: 'hidden',
+  },
+  opcionMascota: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomColor: C.borde,
+    borderBottomWidth: 1,
+  },
+  opcionMascotaNombre: {
+    color: C.texto,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  campoObservaciones: {
+    minHeight: 100,
+    backgroundColor: C.blanco,
+    borderColor: C.borde,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: C.texto,
+    fontSize: 14,
+  },
+  notaFormulario: {
+    color: C.secundario,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 12,
+  },
+  botonesModal: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 20,
+  },
+  botonCancelar: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderColor: C.borde,
+    borderWidth: 1,
+    backgroundColor: C.blanco,
+    borderRadius: 11,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+  },
+  textoCancelar: {
+    color: C.texto,
+    fontWeight: '700',
+  },
+  botonGuardar: {
+    minWidth: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.verde,
+    borderRadius: 11,
+    paddingHorizontal: 20,
+    paddingVertical: 13,
+  },
+  botonDeshabilitado: {
+    opacity: 0.6,
+  },
+  textoGuardar: {
+    color: C.blanco,
+    fontWeight: '800',
+  },
+});

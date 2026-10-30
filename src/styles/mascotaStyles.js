@@ -137,6 +137,8 @@ const mascotaStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: 8,
+  gap: 8,
+  marginTop: 10,
   },
 
   etiquetaInformacion: {
@@ -592,12 +594,7 @@ const mascotaStyles = StyleSheet.create({
   borderColor: '#DC2626',
 },
 
-filaInformacion: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 8,
-  marginTop: 10,
-},
+
 });
 
 export default mascotaStyles;
