@@ -1,69 +1,63 @@
 
-/**
- * RF03 - Pantalla para solicitar el enlace de recuperación.
- * Expo Router utiliza esta ruta para abrir la pantalla desde el login.
- */
-
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   SafeAreaView,
-  ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
+  TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { router } from 'expo-router';
 
-import FormularioRecuperarContrasena from '../components/autenticacion/formularioRecuperarContrasena';
-import { enviarEnlaceRecuperacion } from '../services/recuperacionContrasenaServicio';
+import {
+  correoTieneFormatoValido,
+  enviarEnlaceRecuperacion,
+} from '../services/persistencia/recuperacionContrasenaServicio';
 
-export default function PantallaRecuperarContrasena() {
-  // ARRANGE: estados de carga y mensajes del formulario.
+export default function RecuperarContrasena() {
+  const [correo, setCorreo] = useState('');
   const [cargando, setCargando] = useState(false);
   const [mensaje, setMensaje] = useState('');
-  const [tipoMensaje, setTipoMensaje] = useState('advertencia');
+  const [tipoMensaje, setTipoMensaje] = useState('');
+  const [solicitudEnviada, setSolicitudEnviada] = useState(false);
 
-  const mostrarMensaje = (texto, tipo = 'advertencia') => {
-    setMensaje(texto);
-    setTipoMensaje(tipo);
-  };
+  const solicitarRecuperacion = async () => {
+    if (cargando) return;
 
-  const limpiarMensaje = () => {
-    setMensaje('');
-    setTipoMensaje('advertencia');
-  };
+    const correoNormalizado = correo.trim().toLowerCase();
 
-  // RF03: solicitar el enlace mediante Supabase Auth.
-  const enviarEnlace = async (correo, errorValidacion) => {
-    // ASSERT: mostrar errores de validación sin llamar a Supabase.
-    if (errorValidacion) {
-      mostrarMensaje(errorValidacion, 'advertencia');
+    if (!correoNormalizado) {
+      setTipoMensaje('error');
+      setMensaje('Ingrese su correo electrónico.');
       return;
     }
 
-    if (!correo || cargando) {
+    if (!correoTieneFormatoValido(correoNormalizado)) {
+      setTipoMensaje('error');
+      setMensaje('Ingrese un correo electrónico válido.');
       return;
     }
 
-    // ARRANGE: iniciar el envío.
     setCargando(true);
-    limpiarMensaje();
+    setMensaje('');
 
     try {
-      // ACT: solicitar el enlace de recuperación.
-      const resultado = await enviarEnlaceRecuperacion(correo);
-
-      // ASSERT: mostrar el resultado del servicio.
-      mostrarMensaje(
-        resultado.mensaje,
-        resultado.exito ? 'exito' : 'error'
+      const resultado = await enviarEnlaceRecuperacion(
+        correoNormalizado
       );
+
+      setTipoMensaje(resultado.exito ? 'exito' : 'error');
+      setMensaje(resultado.mensaje);
+
+      if (resultado.exito) {
+        setSolicitudEnviada(true);
+      }
     } catch (error) {
-      // ASSERT: manejar errores inesperados de forma controlada.
-      mostrarMensaje(
-        'No se pudo enviar el enlace de recuperación. Intente nuevamente más tarde.',
-        'error'
+      setTipoMensaje('error');
+      setMensaje(
+        'No se pudo procesar la solicitud. Inténtelo nuevamente.'
       );
     } finally {
       setCargando(false);
@@ -72,39 +66,92 @@ export default function PantallaRecuperarContrasena() {
 
   return (
     <SafeAreaView style={estilos.pantalla}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#F4F8F7"
-      />
+      <View style={estilos.contenedor}>
+        <View style={estilos.tarjeta}>
+          <Text style={estilos.icono}>🔐</Text>
 
-      <ScrollView
-        contentContainerStyle={estilos.contenido}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={estilos.encabezado}>
-          <View style={estilos.contenedorLogo}>
-            <Text style={estilos.logo}>🐾</Text>
-          </View>
-
-          <Text style={estilos.nombreAplicacion}>PetCare</Text>
-          <Text style={estilos.descripcionAplicacion}>
-            Clínica Veterinaria
+          <Text style={estilos.titulo}>
+            Recuperar contraseña
           </Text>
+
+          <Text style={estilos.descripcion}>
+            Ingrese el correo electrónico asociado a su cuenta.
+            Le enviaremos un enlace para restablecer su contraseña.
+          </Text>
+
+          <Text style={estilos.etiqueta}>
+            CORREO ELECTRÓNICO
+          </Text>
+
+          <TextInput
+            style={estilos.campo}
+            value={correo}
+            onChangeText={(texto) => {
+              setCorreo(texto);
+              setMensaje('');
+              setSolicitudEnviada(false);
+            }}
+            placeholder="Ingrese su correo electrónico"
+            placeholderTextColor="#999999"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!cargando && !solicitudEnviada}
+          />
+
+          {mensaje !== '' && (
+            <View
+              style={[
+                estilos.mensajeContenedor,
+                tipoMensaje === 'exito'
+                  ? estilos.mensajeExito
+                  : estilos.mensajeError,
+              ]}
+            >
+              <Text
+                style={[
+                  estilos.mensajeTexto,
+                  tipoMensaje === 'exito'
+                    ? estilos.textoExito
+                    : estilos.textoError,
+                ]}
+              >
+                {mensaje}
+              </Text>
+            </View>
+          )}
+
+          {!solicitudEnviada && (
+            <TouchableOpacity
+              style={[
+                estilos.boton,
+                cargando && estilos.botonDeshabilitado,
+              ]}
+              onPress={solicitarRecuperacion}
+              disabled={cargando}
+              activeOpacity={0.8}
+            >
+              {cargando ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={estilos.textoBoton}>
+                  Enviar enlace de recuperación
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={estilos.botonVolver}
+            onPress={() => router.replace('/')}
+            disabled={cargando}
+          >
+            <Text style={estilos.textoVolver}>
+              Volver al inicio de sesión
+            </Text>
+          </TouchableOpacity>
         </View>
-
-        <FormularioRecuperarContrasena
-          onEnviarEnlace={enviarEnlace}
-          cargando={cargando}
-          mensaje={mensaje}
-          tipoMensaje={tipoMensaje}
-          onLimpiarMensaje={limpiarMensaje}
-          onVolver={() => router.replace('/')}
-        />
-
-        <Text style={estilos.piePagina}>
-          © PetCare - Clínica Veterinaria
-        </Text>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -114,43 +161,106 @@ const estilos = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F4F8F7',
   },
-  contenido: {
-    flexGrow: 1,
+  contenedor: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 30,
+    padding: 20,
   },
-  encabezado: {
-    alignItems: 'center',
+  tarjeta: {
+    width: '100%',
+    maxWidth: 430,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 26,
+    elevation: 5,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  icono: {
+    fontSize: 38,
+    textAlign: 'center',
+    marginBottom: 14,
+  },
+  titulo: {
+    fontSize: 25,
+    fontWeight: '700',
+    color: '#263238',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  descripcion: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: '#626E6A',
+    textAlign: 'center',
     marginBottom: 27,
   },
-  contenedorLogo: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#DDF4EA',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  logo: {
-    fontSize: 35,
-  },
-  nombreAplicacion: {
-    fontSize: 29,
-    fontWeight: '800',
-    color: '#239B75',
-  },
-  descripcionAplicacion: {
-    fontSize: 14,
-    color: '#626E6A',
-    marginTop: 3,
-  },
-  piePagina: {
-    marginTop: 26,
+  etiqueta: {
     fontSize: 12,
-    color: '#858D89',
-    textAlign: 'center',
+    fontWeight: '700',
+    letterSpacing: 0.7,
+    color: '#424242',
+    marginBottom: 9,
+  },
+  campo: {
+    height: 49,
+    borderWidth: 1,
+    borderColor: '#D8DDE2',
+    borderRadius: 9,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    color: '#263238',
+    marginBottom: 18,
+  },
+  mensajeContenedor: {
+    borderRadius: 9,
+    padding: 12,
+    marginBottom: 18,
+    borderWidth: 1,
+  },
+  mensajeExito: {
+    backgroundColor: '#E8F7EC',
+    borderColor: '#8CC99B',
+  },
+  mensajeError: {
+    backgroundColor: '#FDECEC',
+    borderColor: '#E7A2A2',
+  },
+  mensajeTexto: {
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  textoExito: {
+    color: '#21834A',
+  },
+  textoError: {
+    color: '#B42318',
+  },
+  boton: {
+    height: 50,
+    backgroundColor: '#239B75',
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  botonDeshabilitado: {
+    opacity: 0.7,
+  },
+  textoBoton: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  botonVolver: {
+    alignItems: 'center',
+    marginTop: 22,
+  },
+  textoVolver: {
+    color: '#287A62',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

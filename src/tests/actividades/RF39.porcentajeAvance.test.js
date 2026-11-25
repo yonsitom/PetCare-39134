@@ -2,15 +2,14 @@
 // RF39 - Visualizar progreso de atención
 // Pruebas TDD basadas únicamente en los 4 escenarios definidos.
 
-jest.mock('../../dao/actividadesDAO', () => ({
-  consultarActividadesPorEstado: jest.fn(),
+jest.mock('../../dao/actividades/actividadesDAO', () => ({  consultarActividadesPorEstado: jest.fn(),
   consultarActividadesPorAtencion: jest.fn(),
   actualizarEstadoActividad: jest.fn(),
   registrarActividad: jest.fn(),
 }));
 
-import { consultarActividadesPorAtencion } from '../../dao/actividadesDAO';
-import { obtenerActividadesYPorcentajeAvance } from '../../services/actividadesServicio';
+import { consultarActividadesPorAtencion } from '../../dao/actividades/actividadesDAO';
+import { obtenerActividadesYPorcentajeAvance } from '../../services/atencion/actividadesServicio';
 
 describe('RF39 - Visualizar progreso de atención', () => {
   beforeEach(() => {

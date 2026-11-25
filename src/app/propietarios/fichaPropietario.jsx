@@ -18,10 +18,9 @@ import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 import {
   consultarPropietarioPorId,
   consultarMascotasPorPropietario,
-} from '../../dao/propietarioDAO';
+} from '../../dao/propietario/propietarioDAO';
 
 import { supabase } from '../../services/supabase';
-import { logger } from '../../utils/logger';
 
 // ======================================================
 // COLORES DE LA PANTALLA
@@ -86,7 +85,7 @@ export default function FichaPropietario() {
         setRolUsuario(data.rol || 'Asistente');
       }
     } catch (e) {
-      logger.info('Error al cargar el perfil:', e.message);
+      console.log('Error al cargar el perfil:', e.message);
     }
   }, []);
 
@@ -120,7 +119,7 @@ export default function FichaPropietario() {
       setPropietario(datosPropietario);
       setMascotas(Array.isArray(datosMascotas) ? datosMascotas : []);
     } catch (e) {
-      logger.error('Error al cargar la ficha del propietario:', e);
+      console.error('Error al cargar la ficha del propietario:', e);
 
       if (e?.code === 'PROPIETARIO_NO_ENCONTRADO') {
         setError(

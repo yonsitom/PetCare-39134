@@ -17,12 +17,11 @@ import {
   consultarMascotasParaAtencion,
   consultarAtencionActivaPorMascota,
   registrarAtencion,
-} from '../../dao/atencionesDAO';
+} from '../../dao/atencion/atencionesDAO';
 
 import { supabase } from '../../services/supabase';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
-import { logger } from '../../utils/logger';
 
 const C = {
   fondo: '#F4F8F7',
@@ -202,7 +201,7 @@ export default function NuevaAtencionScreen() {
           setRolUsuario(usuario?.user_metadata?.rol || '');
         }
       } catch (error) {
-        logger.error('Error cargando Nueva atención:', error);
+        console.error('Error cargando Nueva atención:', error);
 
         if (activo) {
           mostrarMensaje(
@@ -269,7 +268,7 @@ export default function NuevaAtencionScreen() {
     }
 
     router.replace({
-      pathname: '/detalleAtencion',
+      pathname: '/atenciones/detalleAtencion',
       params: { atencion_id: String(atencionId) },
     });
   }
@@ -286,7 +285,7 @@ export default function NuevaAtencionScreen() {
     }
 
     router.replace({
-      pathname: '/detalleAtencion',
+      pathname: '/atenciones/detalleAtencion',
       params: { atencion_id: String(atencionId) },
     });
   }
@@ -333,7 +332,7 @@ export default function NuevaAtencionScreen() {
         ],
       });
     } catch (error) {
-      logger.error('Error registrando atención:', error);
+      console.error('Error registrando atención:', error);
       setGuardando(false);
 
       if (error?.code === 'ATENCION_ACTIVA_EXISTENTE') {
@@ -457,7 +456,7 @@ export default function NuevaAtencionScreen() {
         ],
       });
     } catch (error) {
-      logger.error('Error verificando atención activa:', error);
+      console.error('Error verificando atención activa:', error);
       setGuardando(false);
 
       mostrarMensaje(
@@ -475,7 +474,7 @@ export default function NuevaAtencionScreen() {
       if (error) throw error;
 
       setMenuAbierto(false);
-      router.replace('/login');
+      router.replace('/');
     } catch (error) {
       mostrarMensaje(
         error?.message || 'No se pudo cerrar la sesión.',
@@ -509,7 +508,7 @@ export default function NuevaAtencionScreen() {
       >
         <Text
           style={s.migas}
-          onPress={() => router.replace('/atenciones')}
+          onPress={() => router.replace('/atenciones/atenciones')}
         >
           Atenciones / Nueva atención
         </Text>

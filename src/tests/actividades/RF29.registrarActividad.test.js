@@ -1,8 +1,8 @@
 
-import { registrarActividadServicio } from '../../services/actividadesServicio';
-import { registrarActividad } from '../../dao/actividadesDAO';
+import { registrarActividadServicio } from '../../services/atencion/actividadesServicio';
+import { registrarActividad } from '../../dao/actividades/actividadesDAO';
 
-jest.mock('../../dao/actividadesDAO', () => ({
+jest.mock('../../dao/actividades/actividadesDAO', () => ({
   consultarActividadesPorEstado: jest.fn(),
   actualizarEstadoActividad: jest.fn(),
   registrarActividad: jest.fn(),

@@ -13,7 +13,7 @@
  *
  * CP01: Éxito - dieta registrada.
  * CP02: E1 - dieta no seleccionada.
- * CP03: E2 - dieta sin alimentos.
+ * CP03: E2 - dieta sin datos.
  * CP04: E3 - error al cargar catálogo.
  * CP05: E4 - error al registrar.
  * ============================================================
@@ -24,15 +24,16 @@ import {
   registrarDietaServicio,
 } from '../../services/dieta/dietaServicio';
 
-import * as dietaDAO from '../../dao/dieta/dietaDAO';
+import * as dietaDAO from '../../dao/dietaCita/dietaDAO';
 
 // ============================================================
 // MOCK DEL DAO
 // ============================================================
 
-jest.mock('../../dao/dieta/dietaDAO', () => ({
+jest.mock('../../dao/dietaCita/dietaDAO', () => ({
   consultarDietaPorRecetaDAO: jest.fn(),
   consultarRecetasDisponiblesParaDietaDAO: jest.fn(),
+  consultarTiposDietaDAO: jest.fn(),
   registrarDietaDAO: jest.fn(),
 }));
 
@@ -43,18 +44,22 @@ jest.mock('../../dao/dieta/dietaDAO', () => ({
 const dietaValida = {
   receta_id: 25,
   tipo_dieta: 'Dieta blanda',
-  opciones_proteina: 'Pollo sancochado',
-  opciones_vegetales: 'Zanahoria cocida',
-  restriccion_nutricional: 'Sin sal',
+  detalle_dieta: {
+    opciones_proteina: 'Pollo sancochado',
+    opciones_vegetales: 'Zanahoria cocida',
+    restriccion_nutricional: 'Sin sal',
+  },
 };
 
 const dietaRegistrada = {
   dieta_id: 1,
   receta_id: 25,
   tipo_dieta: 'Dieta blanda',
-  opciones_proteina: 'Pollo sancochado',
-  opciones_vegetales: 'Zanahoria cocida',
-  restriccion_nutricional: 'Sin sal',
+  detalle_dieta: {
+    opciones_proteina: 'Pollo sancochado',
+    opciones_vegetales: 'Zanahoria cocida',
+    restriccion_nutricional: 'Sin sal',
+  },
 };
 
 // ============================================================
@@ -87,9 +92,11 @@ describe('RF54 - Registrar la dieta indicada a una mascota', () => {
     expect(dietaDAO.registrarDietaDAO).toHaveBeenCalledWith({
       receta_id: 25,
       tipo_dieta: 'Dieta blanda',
-      opciones_proteina: 'Pollo sancochado',
-      opciones_vegetales: 'Zanahoria cocida',
-      restriccion_nutricional: 'Sin sal',
+      detalle_dieta: {
+        opciones_proteina: 'Pollo sancochado',
+        opciones_vegetales: 'Zanahoria cocida',
+        restriccion_nutricional: 'Sin sal',
+      },
     });
 
     expect(resultado).toEqual(dietaRegistrada);
@@ -103,9 +110,10 @@ describe('RF54 - Registrar la dieta indicada a una mascota', () => {
     const datosSinTipoDieta = {
       receta_id: 25,
       tipo_dieta: '',
-      opciones_proteina: 'Pollo sancochado',
-      opciones_vegetales: 'Zanahoria cocida',
-      restriccion_nutricional: 'Sin sal',
+      detalle_dieta: {
+        opciones_proteina: 'Pollo sancochado',
+        opciones_vegetales: 'Zanahoria cocida',
+      },
     };
 
     await expect(
@@ -119,22 +127,24 @@ describe('RF54 - Registrar la dieta indicada a una mascota', () => {
   });
 
   // ==========================================================
-  // CP03 - E2: DIETA SIN ALIMENTOS
+  // CP03 - E2: DIETA SIN DATOS
   // ==========================================================
 
-  test('CP03 - Debe rechazar una dieta que no tiene alimentos asociados', async () => {
-    const dietaSinAlimentos = {
+  test('CP03 - Debe rechazar una dieta que no tiene datos registrados', async () => {
+    const dietaSinDatos = {
       receta_id: 25,
       tipo_dieta: 'Dieta blanda',
-      opciones_proteina: '',
-      opciones_vegetales: '',
-      restriccion_nutricional: 'Sin sal',
+      detalle_dieta: {
+        opciones_proteina: '',
+        opciones_vegetales: '',
+        restriccion_nutricional: '',
+      },
     };
 
     await expect(
-      registrarDietaServicio(dietaSinAlimentos)
+      registrarDietaServicio(dietaSinDatos)
     ).rejects.toThrow(
-      'La dieta seleccionada no tiene alimentos registrados.'
+      'Completa al menos uno de los campos de la dieta seleccionada.'
     );
 
     expect(dietaDAO.registrarDietaDAO)
@@ -174,7 +184,7 @@ describe('RF54 - Registrar la dieta indicada a una mascota', () => {
     await expect(
       registrarDietaServicio(dietaValida)
     ).rejects.toThrow(
-      'No fue posible registrar la actividad. Intente nuevamente.'
+      'No fue posible registrar la dieta. Intente nuevamente.'
     );
 
     expect(dietaDAO.registrarDietaDAO)

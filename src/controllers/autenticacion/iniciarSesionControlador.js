@@ -24,7 +24,6 @@
  * El contador es local a esta instancia del controlador.
  * No sustituye un bloqueo de seguridad en el servidor.
  */
-import { logger } from '../../utils/logger';
 
 export const MENSAJES_INICIO_SESION = Object.freeze({
   CAMPOS_INCOMPLETOS:
@@ -224,7 +223,7 @@ export function crearControladorInicioSesion({
         try {
           await cerrarSesion();
         } catch (errorCierre) {
-          logger.error(
+          console.error(
             'RF01 — No se pudo cerrar la sesión no autorizada:',
             errorCierre?.message || errorCierre
           );
@@ -258,7 +257,7 @@ export function crearControladorInicioSesion({
         try {
           await cerrarSesion();
         } catch (errorCierre) {
-          logger.error(
+          console.error(
             'RF01 — Error al cerrar la sesión incompleta:',
             errorCierre?.message || errorCierre
           );

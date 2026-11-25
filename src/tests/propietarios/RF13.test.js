@@ -9,7 +9,7 @@ import {
   consultarPropietarios,
   consultarMascotasPorPropietario,
   consultarPropietarioPorId,
-} from '../../dao/propietarioDAO';
+} from '../../dao/propietario/propietarioDAO';
 
 jest.mock('expo-router', () => ({
   router: {
@@ -61,7 +61,7 @@ jest.mock('../../components/propietarios/RegistrarPropietario', () => {
   };
 });
 
-jest.mock('../../dao/propietarioDAO', () => ({
+jest.mock('../../dao/propietario/propietarioDAO', () => ({
   consultarPropietarios: jest.fn(),
   consultarMascotasPorPropietario: jest.fn(),
   consultarPropietarioPorId: jest.fn(),

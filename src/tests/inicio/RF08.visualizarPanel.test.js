@@ -6,7 +6,7 @@ jest.mock('../../services/supabase', () => ({
 }));
 
 import { supabase } from '../../services/supabase';
-import { consultarResumenInicio } from '../../services/panelInicioServicio';
+import { consultarResumenInicio } from '../../services/autentificacion/panelInicioServicio';
 
 /**
  * RF08 y RF10:

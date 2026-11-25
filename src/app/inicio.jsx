@@ -1,4 +1,5 @@
-﻿import React, {
+﻿
+import React, {
   useCallback,
   useEffect,
   useMemo,
@@ -18,13 +19,12 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 
 import { supabase } from '../services/supabase';
-import { consultarPerfilPorId } from '../dao/perfilDAO';
+import { consultarPerfilPorId } from '../dao/autentificacion/perfilDAO';
 import { crearControladorRolUsuario } from '../controllers/autenticacion/rolUsuarioControlador';
 import { crearControladorInicio } from '../controllers/inicio/inicioControlador';
 
 import MenuLateralDerecho from '../components/layout/MenuLateralDerecho';
 import EncabezadoPetCare from '../components/layout/EncabezadoPetCare';
-import { logger } from '../utils/logger';
 
 const C = {
   primario: '#0D9488',
@@ -64,17 +64,6 @@ const INDICADORES_INICIALES = {
 const MENSAJE_ERROR_ATENCIONES_ACTIVAS =
   'No se pudo cargar la cantidad de atenciones activas. Intente nuevamente.';
 
-const MENSAJE_ERROR_LISTADO_ATENCIONES =
-  'No se pudo cargar la información de las atenciones. Intente nuevamente.';
-
-function normalizar(valor) {
-  return String(valor || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
-}
-
 function obtenerIniciales(texto = '') {
   return (
     texto
@@ -100,23 +89,21 @@ function formatearFecha(fecha) {
 
   const partes = String(fecha).split('-');
 
-  if (partes.length !== 3) return fecha;
+  if (partes.length !== 3) return String(fecha);
 
   return `${partes[2]}/${partes[1]}/${partes[0]}`;
 }
 
-function excluirCitaPorEstado(estado) {
-  const valor = normalizar(estado);
+function obtenerNombreActividad(actividad) {
+  return (
+    actividad?.tipo ||
+    actividad?.tipos_actividad?.nombre ||
+    'Actividad veterinaria'
+  );
+}
 
-  return [
-    'cancelada',
-    'cancelado',
-    'atendida',
-    'atendido',
-    'no asistio',
-    'no asistida',
-    'no asistido',
-  ].includes(valor);
+function obtenerMascotaActividad(actividad) {
+  return actividad?.atencion?.mascota || null;
 }
 
 export default function InicioScreen() {
@@ -132,20 +119,20 @@ export default function InicioScreen() {
   const [cargandoIndicadores, setCargandoIndicadores] = useState(false);
   const [cargandoAtencionesActivas, setCargandoAtencionesActivas] =
     useState(false);
-  const [cargandoCitas, setCargandoCitas] = useState(false);
+  const [cargandoActividades, setCargandoActividades] = useState(false);
 
   const [accesoAutorizado, setAccesoAutorizado] = useState(false);
 
   const [errorPerfil, setErrorPerfil] = useState('');
   const [errorIndicadores, setErrorIndicadores] = useState('');
   const [errorAtencionesActivas, setErrorAtencionesActivas] = useState('');
-  const [errorCitas, setErrorCitas] = useState('');
+  const [errorActividades, setErrorActividades] = useState('');
 
   const [indicadores, setIndicadores] = useState(
     INDICADORES_INICIALES
   );
 
-  const [proximasCitas, setProximasCitas] = useState([]);
+  const [proximasActividades, setProximasActividades] = useState([]);
 
   /*
    * RF02: Administrador y Asistente pueden ingresar al panel.
@@ -181,10 +168,10 @@ export default function InicioScreen() {
     setAccesoAutorizado(false);
     setFunciones(FUNCIONES_VACIAS);
     setIndicadores(INDICADORES_INICIALES);
-    setProximasCitas([]);
+    setProximasActividades([]);
     setErrorIndicadores('');
     setErrorAtencionesActivas('');
-    setErrorCitas('');
+    setErrorActividades('');
 
     try {
       const {
@@ -233,14 +220,14 @@ export default function InicioScreen() {
 
       return true;
     } catch (error) {
-      logger.error('Error al verificar el acceso a PetCare:', error);
+      console.error('Error al verificar el acceso a PetCare:', error);
 
       setNombre('');
       setRol('');
       setEstadoCuenta('');
       setFunciones(FUNCIONES_VACIAS);
       setIndicadores(INDICADORES_INICIALES);
-      setProximasCitas([]);
+      setProximasActividades([]);
       setAccesoAutorizado(false);
 
       setErrorPerfil(
@@ -254,15 +241,15 @@ export default function InicioScreen() {
   }, [controladorRol]);
 
   /*
-   * RF08: cargar resumen de atenciones y actividades.
-   * La consulta del resumen se delega al controlador.
+   * RF08: cargar resumen y próximas actividades.
+   * Las actividades no necesitan tener una cita asociada.
    */
   const cargarIndicadores = useCallback(async () => {
     if (!accesoAutorizado) {
       setIndicadores(INDICADORES_INICIALES);
-      setProximasCitas([]);
+      setProximasActividades([]);
       setCargandoIndicadores(false);
-      setCargandoCitas(false);
+      setCargandoActividades(false);
       return;
     }
 
@@ -277,7 +264,7 @@ export default function InicioScreen() {
         ...resumen,
       }));
     } catch (error) {
-      logger.error('RF08: error al cargar el resumen:', error);
+      console.error('RF08: error al cargar el resumen:', error);
 
       setErrorIndicadores(
         error?.message ||
@@ -288,59 +275,32 @@ export default function InicioScreen() {
     }
 
     /*
-     * RF08: consulta independiente de citas programadas.
-     * Si falla, el resumen del panel sigue disponible.
+     * RF08: consultar actividades pendientes por fecha prevista.
+     * No depende de citas ni de detalle_cita.
      */
-    setCargandoCitas(true);
-    setErrorCitas('');
+    setCargandoActividades(true);
+    setErrorActividades('');
 
     try {
-      const hoy = new Date();
-      hoy.setHours(0, 0, 0, 0);
+      const resultado =
+        await controladorInicio.cargarProximasActividades();
 
-      const fechaLimite = new Date(hoy);
-      fechaLimite.setDate(fechaLimite.getDate() + 3);
-
-      const fechaHoy = [
-        hoy.getFullYear(),
-        String(hoy.getMonth() + 1).padStart(2, '0'),
-        String(hoy.getDate()).padStart(2, '0'),
-      ].join('-');
-
-      const fechaMaxima = [
-        fechaLimite.getFullYear(),
-        String(fechaLimite.getMonth() + 1).padStart(2, '0'),
-        String(fechaLimite.getDate()).padStart(2, '0'),
-      ].join('-');
-
-      // RF08: consulta de las columnas utilizadas en public.citas.
-      const { data, error } = await supabase
-        .from('citas')
-        .select(
-          'cita_id, numero_historia, fecha_programada, hora_cita, estado'
-        )
-        .gte('fecha_programada', fechaHoy)
-        .lte('fecha_programada', fechaMaxima)
-        .order('fecha_programada', { ascending: true })
-        .order('hora_cita', { ascending: true });
-
-      if (error) throw error;
-
-      const citasFiltradas = (data || []).filter(
-        (cita) => !excluirCitaPorEstado(cita.estado)
+      setProximasActividades(
+        Array.isArray(resultado) ? resultado : []
       );
-
-      setProximasCitas(citasFiltradas);
     } catch (error) {
-      logger.error(
-        'RF08: error al consultar las próximas citas:',
+      console.error(
+        'RF08: error al consultar próximas actividades:',
         error
       );
 
-      setProximasCitas([]);
-      setErrorCitas('No se pudieron consultar las próximas citas.');
+      setProximasActividades([]);
+      setErrorActividades(
+        error?.message ||
+          'No se pudieron consultar las próximas actividades.'
+      );
     } finally {
-      setCargandoCitas(false);
+      setCargandoActividades(false);
     }
   }, [accesoAutorizado]);
 
@@ -369,7 +329,7 @@ export default function InicioScreen() {
         activas: resultado.activas,
       }));
     } catch (error) {
-      logger.error(
+      console.error(
         'RF09: error al consultar atenciones activas:',
         error
       );
@@ -383,11 +343,11 @@ export default function InicioScreen() {
   }, [accesoAutorizado]);
 
   /*
-   * RF09: navegar al módulo Atenciones con el estado Activa.
+   * RF09: navegar al módulo Atenciones mostrando las activas.
    */
   const abrirAtenciones = useCallback(() => {
     router.push({
-      pathname: '/atenciones',
+      pathname: '/atenciones/atenciones',
       params: {
         estado: 'Activa',
       },
@@ -395,11 +355,11 @@ export default function InicioScreen() {
   }, []);
 
   /*
-   * RF10: navegar al módulo Atenciones con el estado de actividad elegido.
+   * RF10: navegar al listado de actividades con el filtro elegido.
    */
   const abrirActividadesPorEstado = useCallback((estado) => {
     router.push({
-      pathname: '/atenciones',
+      pathname: '/actividades/actividades',
       params: {
         estadoActividad: estado,
       },
@@ -407,7 +367,7 @@ export default function InicioScreen() {
   }, []);
 
   /*
-   * Verificar el acceso cuando Inicio recibe el foco.
+   * RF02: verificar el acceso cuando Inicio recibe el foco.
    */
   useFocusEffect(
     useCallback(() => {
@@ -431,7 +391,7 @@ export default function InicioScreen() {
   ]);
 
   /*
-   * RF08 y RF09: actualizar indicadores y citas.
+   * RF08 y RF09: actualizar indicadores y actividades.
    */
   const actualizarInicio = useCallback(async () => {
     await Promise.all([
@@ -455,19 +415,18 @@ export default function InicioScreen() {
 
       router.replace('/');
     } catch (error) {
-      // El menú lateral gestiona el mensaje del error.
-      throw error;
+      console.error('Error al cerrar sesión:', error);
+      Alert.alert(
+        'No se pudo cerrar sesión',
+        'Intente nuevamente.'
+      );
     }
   }
 
-  /*
-   * Pantalla de carga del perfil.
-   */
   if (cargandoPerfil) {
     return (
       <View style={styles.pantallaBloqueo}>
         <ActivityIndicator size="large" color={C.primario} />
-
         <Text style={styles.textoCargandoAcceso}>
           Verificando acceso a PetCare...
         </Text>
@@ -475,9 +434,6 @@ export default function InicioScreen() {
     );
   }
 
-  /*
-   * RF02: no mostrar el panel sin autorización.
-   */
   if (!accesoAutorizado) {
     return (
       <View style={styles.pantallaBloqueo}>
@@ -535,7 +491,7 @@ export default function InicioScreen() {
       >
         <Text style={styles.migaActiva}>Inicio</Text>
 
-        {/* RF02: bienvenida compartida por ambos roles */}
+        {/* RF02: bienvenida compartida por ambos roles. */}
         <View style={styles.bienvenida}>
           <View style={styles.bienvenidaTexto}>
             <Text style={styles.saludo}>¡Bienvenida!</Text>
@@ -558,28 +514,7 @@ export default function InicioScreen() {
           {obtenerFechaActual()}
         </Text>
 
-        {/* RF08: total de atenciones registradas */}
-        <View style={styles.tarjetaAtenciones}>
-          <View style={styles.textosAtenciones}>
-            <Text style={styles.tituloAtenciones}>
-              Atenciones registradas
-            </Text>
-
-            <Text style={styles.descripcionAtenciones}>
-              Total de atenciones veterinarias registradas.
-            </Text>
-          </View>
-
-          {cargandoIndicadores ? (
-            <ActivityIndicator size="large" color={C.blanco} />
-          ) : (
-            <Text style={styles.numeroAtenciones}>
-              {indicadores.atencionesRegistradas}
-            </Text>
-          )}
-        </View>
-
-        {/* RF09: contador de atenciones activas */}
+        {/* RF09: contador de atenciones activas. */}
         <TouchableOpacity
           style={styles.tarjetaActivas}
           onPress={abrirAtenciones}
@@ -610,13 +545,10 @@ export default function InicioScreen() {
           )}
         </TouchableOpacity>
 
-        {/* RF09: mensaje de error y reintento independiente */}
         {errorAtencionesActivas ? (
           <View style={styles.alerta}>
             <Text style={styles.textoAlerta}>
-              {errorAtencionesActivas === MENSAJE_ERROR_LISTADO_ATENCIONES
-                ? MENSAJE_ERROR_LISTADO_ATENCIONES
-                : errorAtencionesActivas}
+              {errorAtencionesActivas}
             </Text>
 
             <TouchableOpacity
@@ -626,13 +558,15 @@ export default function InicioScreen() {
               activeOpacity={0.8}
             >
               <Text style={styles.textoBotonReintentarIndicadores}>
-                {cargandoAtencionesActivas ? 'Cargando...' : 'Reintentar'}
+                {cargandoAtencionesActivas
+                  ? 'Cargando...'
+                  : 'Reintentar'}
               </Text>
             </TouchableOpacity>
           </View>
         ) : null}
 
-        {/* RF08: resumen de actividades */}
+        {/* RF08: resumen de actividades. */}
         <View style={styles.tituloIndicadores}>
           <Text style={styles.tituloSeccion}>
             Resumen de actividades
@@ -643,14 +577,14 @@ export default function InicioScreen() {
             onPress={actualizarInicio}
             disabled={
               cargandoIndicadores ||
-              cargandoCitas ||
+              cargandoActividades ||
               cargandoAtencionesActivas
             }
             activeOpacity={0.8}
           >
             <Text style={styles.textoActualizar}>
               {cargandoIndicadores ||
-              cargandoCitas ||
+              cargandoActividades ||
               cargandoAtencionesActivas
                 ? 'Actualizando...'
                 : '↻ Actualizar'}
@@ -677,7 +611,7 @@ export default function InicioScreen() {
           </View>
         ) : null}
 
-        {/* RF10: tarjetas para consultar actividades por estado */}
+        {/* RF10: acceso al listado de actividades. */}
         <View style={styles.grilla}>
           <TarjetaIndicador
             icono="◷"
@@ -710,7 +644,7 @@ export default function InicioScreen() {
           />
         </View>
 
-        {/* RF08: próximas citas programadas */}
+        {/* RF08: próximas actividades, tengan o no una cita. */}
         <View style={styles.tarjetaProximas}>
           <View style={styles.encabezadoProximas}>
             <View style={styles.iconoProximas}>
@@ -719,35 +653,34 @@ export default function InicioScreen() {
 
             <View style={styles.textosProximas}>
               <Text style={styles.tituloSeccion}>
-                Próximas citas
+                Próximas actividades
               </Text>
 
               <Text style={styles.descripcionProximas}>
-                Citas programadas para los próximos tres días.
+                Actividades pendientes de los próximos tres días.
               </Text>
             </View>
           </View>
 
           <View style={styles.separador} />
 
-          {cargandoCitas ? (
+          {cargandoActividades ? (
             <View style={styles.estadoCitas}>
               <ActivityIndicator color={C.primario} />
-
               <Text style={styles.descripcionProximas}>
-                Consultando citas...
+                Consultando próximas actividades...
               </Text>
             </View>
-          ) : errorCitas ? (
+          ) : errorActividades ? (
             <View>
               <Text style={styles.textoAlerta}>
-                {errorCitas}
+                {errorActividades}
               </Text>
 
               <TouchableOpacity
                 style={styles.botonReintentarIndicadores}
-                onPress={actualizarInicio}
-                disabled={cargandoCitas}
+                onPress={cargarIndicadores}
+                disabled={cargandoActividades}
                 activeOpacity={0.8}
               >
                 <Text style={styles.textoBotonReintentarIndicadores}>
@@ -755,38 +688,70 @@ export default function InicioScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
-          ) : proximasCitas.length === 0 ? (
+          ) : proximasActividades.length === 0 ? (
             <Text style={styles.descripcionProximas}>
-              No hay próximas citas programadas.
+              No hay actividades pendientes para los próximos tres días.
             </Text>
           ) : (
-            proximasCitas.map((cita) => (
-              <View
-                key={cita.cita_id}
-                style={styles.citaFila}
-              >
-                <View style={styles.citaDetalle}>
-                  <Text style={styles.citaHistoria}>
-                    Historia: {cita.numero_historia || 'No indicada'}
-                  </Text>
+            proximasActividades.map((actividad) => {
+              const mascota = obtenerMascotaActividad(actividad);
 
-                  <Text style={styles.descripcionProximas}>
-                    Fecha: {formatearFecha(cita.fecha_programada)}
-                  </Text>
+              return (
+                <TouchableOpacity
+                  key={actividad.actividad_id}
+                  style={styles.actividadProxima}
+                  onPress={() =>
+                    abrirActividadesPorEstado('Pendiente')
+                  }
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.actividadProximaIcono}>
+                    <Text style={styles.actividadProximaIconoTexto}>
+                      ✓
+                    </Text>
+                  </View>
 
-                  <Text style={styles.descripcionProximas}>
-                    Hora: {cita.hora_cita || 'No indicada'}
-                  </Text>
+                  <View style={styles.actividadProximaDatos}>
+                    <Text style={styles.nombreActividad}>
+                      {obtenerNombreActividad(actividad)}
+                    </Text>
 
-                  <Text style={styles.descripcionProximas}>
-                    Estado: {cita.estado || 'Sin estado'}
-                  </Text>
-                </View>
-              </View>
-            ))
+                    <Text style={styles.descripcionProximas}>
+                      Mascota: {mascota?.nombre || 'No disponible'}
+                    </Text>
+
+                    {mascota?.especie ? (
+                      <Text style={styles.descripcionProximas}>
+                        Especie: {mascota.especie}
+                      </Text>
+                    ) : null}
+
+                    <Text style={styles.descripcionProximas}>
+                      Historia:{' '}
+                      {actividad.atencion?.numero_historia ||
+                        mascota?.numero_historia ||
+                        'No indicada'}
+                    </Text>
+
+                    <Text style={styles.descripcionProximas}>
+                      Fecha prevista:{' '}
+                      {formatearFecha(actividad.fecha_prevista)}
+                    </Text>
+
+                    <Text style={styles.descripcionProximas}>
+                      Estado: {actividad.estado}
+                    </Text>
+                  </View>
+
+                  <View style={styles.etiquetaActividad}>
+                    <Text style={styles.textoEtiquetaActividad}>
+                      Pendiente
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
           )}
-
-          <View style={styles.separador} />
         </View>
 
         <View style={styles.pie}>
@@ -796,7 +761,6 @@ export default function InicioScreen() {
         </View>
       </ScrollView>
 
-      {/* RF02: menú lateral con opciones según el rol */}
       <MenuLateralDerecho
         visible={menuAbierto}
         onCerrar={() => setMenuAbierto(false)}
@@ -809,7 +773,7 @@ export default function InicioScreen() {
 }
 
 /*
- * RF08: componente reutilizable para presentar los indicadores.
+ * RF08: componente reutilizable para presentar indicadores.
  * RF10: permite navegar según el estado seleccionado.
  */
 function TarjetaIndicador({
@@ -1018,18 +982,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  tarjetaAtenciones: {
-    backgroundColor: C.primarioOscuro,
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: C.borde,
-  },
-
   tarjetaActivas: {
     backgroundColor: C.primario,
     borderRadius: 18,
@@ -1234,19 +1186,54 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 
-  citaFila: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: C.borde,
+  actividadProxima: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 12,
+    backgroundColor: '#F8FFFD',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.borde,
+    marginBottom: 9,
   },
 
-  citaDetalle: {
+  actividadProximaIcono: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: C.verdeClaro,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+
+  actividadProximaIconoTexto: {
+    color: C.primarioOscuro,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+
+  actividadProximaDatos: {
     flex: 1,
   },
 
-  citaHistoria: {
+  etiquetaActividad: {
+    backgroundColor: C.amarilloClaro,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    marginLeft: 5,
+  },
+
+  textoEtiquetaActividad: {
+    color: '#805C17',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+
+  nombreActividad: {
     color: C.texto,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '800',
   },
 

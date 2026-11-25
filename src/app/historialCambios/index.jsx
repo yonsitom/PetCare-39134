@@ -1,1027 +1,1055 @@
-
 /**
+ * ============================================================
  * PETCARE - HISTORIAL DE CAMBIOS
- * Archivo: src/app/historialCambios.jsx
+ * Archivo: src/app/historialCambios/index.jsx
  *
- * RF: Consultar historial de cambios.
- * RF: Filtrar cambios por acción y fechas.
- * RF: Consultar detalle de los cambios.
+ * RF42: Registrar auditoría automática.
+ * RF50: Consultar historial de cambios.
  *
- * Acceso previsto: Administrador.
+ * Arquitectura:
+ * Vista -> Controlador -> Servicio -> DAO -> Supabase.
+ *
+ * Acceso: Administrador.
+ * ============================================================
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 
 import {
-  ActivityIndicator,
-  Alert,
-  RefreshControl,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    RefreshControl,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
-import { useFocusEffect, useRouter } from "expo-router";
+import {
+    useFocusEffect,
+    useRouter,
+} from "expo-router";
 
 import EncabezadoPetCare from "../../components/layout/EncabezadoPetCare";
 
 import {
-  cargarHistorialCambios,
-  cargarDetalleHistorial,
+    cargarHistorialCambios,
 } from "../../controllers/historial/historialCambiosControlador";
-import { logger } from '../../utils/logger';
 
-// --------------------------------------------------
+// ============================================================
+// CONSTANTES
+// ============================================================
+
+const ACCIONES = [
+    { valor: "Todos", etiqueta: "Todas" },
+    { valor: "CREAR", etiqueta: "Crear" },
+    { valor: "MODIFICAR", etiqueta: "Modificar" },
+    { valor: "CAMBIAR_ESTADO", etiqueta: "Cambiar estado" },
+    { valor: "ELIMINAR", etiqueta: "Eliminar" },
+];
+
+const LIMITE_PAGINA = 20;
+
+// ============================================================
 // FUNCIONES AUXILIARES
-// --------------------------------------------------
+// ============================================================
 
 function formatearFechaHora(fecha) {
-  if (!fecha) return "Fecha no disponible";
+    if (!fecha) return "Fecha no disponible";
 
-  const valor = new Date(fecha);
+    const valor = new Date(fecha);
 
-  if (Number.isNaN(valor.getTime())) {
-    return String(fecha);
-  }
-
-  return valor.toLocaleString("es-PE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatearJSON(valor) {
-  if (valor === null || valor === undefined) {
-    return "Sin información";
-  }
-
-  if (typeof valor === "string") {
-    try {
-      return JSON.stringify(JSON.parse(valor), null, 2);
-    } catch {
-      return valor;
+    if (Number.isNaN(valor.getTime())) {
+        return String(fecha);
     }
-  }
 
-  return JSON.stringify(valor, null, 2);
+    return valor.toLocaleString("es-PE", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
 }
 
-function colorAccion(accion) {
-  switch (String(accion || "").toUpperCase()) {
-    case "CREAR":
-      return "#E4F4EC";
-    case "MODIFICAR":
-      return "#E8F0FC";
-    case "CAMBIAR_ESTADO":
-      return "#FFF2DC";
-    case "ELIMINAR":
-      return "#FCE9E7";
-    default:
-      return "#EDF1EF";
-  }
+function obtenerEtiquetaEntidad(entidad) {
+    const etiquetas = {
+        propietarios: "Propietarios",
+        mascotas: "Mascotas",
+        atenciones: "Atenciones",
+        actividades: "Actividades",
+        perfiles: "Usuarios",
+    };
+
+    return etiquetas[entidad] || entidad || "Sin entidad";
 }
 
-function colorTextoAccion(accion) {
-  switch (String(accion || "").toUpperCase()) {
-    case "CREAR":
-      return "#26764D";
-    case "MODIFICAR":
-      return "#3565A5";
-    case "CAMBIAR_ESTADO":
-      return "#A46B1D";
-    case "ELIMINAR":
-      return "#B4473D";
-    default:
-      return "#53645F";
-  }
+function obtenerDescripcionRegistro(registro) {
+    const entidad = registro.entidad;
+
+    const datos =
+        registro.datos_nuevos ||
+        registro.datos_anteriores ||
+        {};
+
+    if (entidad === "propietarios") {
+        return datos.nombre
+            ? `Propietario: ${datos.nombre} ${datos.apellido || ""}`.trim()
+            : "Registro de propietario";
+    }
+
+    if (entidad === "mascotas") {
+        return datos.nombre
+            ? `Mascota: ${datos.nombre}`
+            : "Registro de mascota";
+    }
+
+    if (entidad === "actividades") {
+        return datos.tipo
+            ? `Actividad: ${datos.tipo}`
+            : "Registro de actividad";
+    }
+
+    if (entidad === "atenciones") {
+        return datos.numero_historia
+            ? `Historia: ${datos.numero_historia}`
+            : "Registro de atención";
+    }
+
+    if (entidad === "perfiles") {
+        return datos.nombre_completo
+            ? `Usuario: ${datos.nombre_completo}`
+            : "Registro de usuario";
+    }
+
+    return "Registro general";
 }
 
-// --------------------------------------------------
-// COMPONENTE
-// --------------------------------------------------
+function obtenerColorAccion(accion) {
+    switch (String(accion || "").toUpperCase()) {
+        case "CREAR":
+            return {
+                fondo: "#E7F5ED",
+                texto: "#26764D",
+            };
+
+        case "MODIFICAR":
+            return {
+                fondo: "#EAF1FC",
+                texto: "#3565A5",
+            };
+
+        case "CAMBIAR_ESTADO":
+            return {
+                fondo: "#FFF3DF",
+                texto: "#A46B1D",
+            };
+
+        case "ELIMINAR":
+            return {
+                fondo: "#FCEBE9",
+                texto: "#B4473D",
+            };
+
+        default:
+            return {
+                fondo: "#EDF1EF",
+                texto: "#53645F",
+            };
+    }
+}
+
+function formatearAccion(accion) {
+    return String(accion || "SIN ACCIÓN").replace(/_/g, " ");
+}
+
+// ============================================================
+// COMPONENTE PRINCIPAL
+// ============================================================
 
 export default function HistorialCambios() {
-  const router = useRouter();
+    const router = useRouter();
 
-  const [registros, setRegistros] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [actualizando, setActualizando] = useState(false);
-  const [error, setError] = useState("");
+    const [registros, setRegistros] = useState([]);
+    const [total, setTotal] = useState(0);
 
-  const [accion, setAccion] = useState("Todos");
-  const [fechaDesde, setFechaDesde] = useState("");
-  const [fechaHasta, setFechaHasta] = useState("");
+    const [pagina, setPagina] = useState(1);
+    const [totalPaginas, setTotalPaginas] = useState(1);
 
-  const [filtrosAplicados, setFiltrosAplicados] = useState({
-    tipoAccion: "Todos",
-    fechaDesde: "",
-    fechaHasta: "",
-    desde: 0,
-    limite: 50,
-  });
+    const [cargando, setCargando] = useState(true);
+    const [actualizando, setActualizando] = useState(false);
+    const [error, setError] = useState("");
 
-  const [detalle, setDetalle] = useState(null);
-  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+    const [accion, setAccion] = useState("Todos");
 
-  // ------------------------------------------------
-  // CONSULTAR HISTORIAL
-  // ------------------------------------------------
-
-  const consultar = useCallback(async (filtros, refrescar = false) => {
-    try {
-      if (refrescar) {
-        setActualizando(true);
-      } else {
-        setCargando(true);
-      }
-
-      setError("");
-
-      const respuesta = await cargarHistorialCambios(filtros);
-
-      if (!respuesta?.correcto) {
-        throw new Error(
-          respuesta?.mensaje || "No se pudo consultar el historial."
-        );
-      }
-
-      setRegistros(respuesta.datos || []);
-    } catch (e) {
-      logger.error("Error al consultar historial:", e);
-      setError(e?.message || "Ocurrió un error al consultar el historial.");
-    } finally {
-      setCargando(false);
-      setActualizando(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    consultar(filtrosAplicados);
-  }, [consultar, filtrosAplicados]);
-
-  useFocusEffect(
-    useCallback(() => {
-      consultar(filtrosAplicados, true);
-    }, [consultar, filtrosAplicados])
-  );
-
-  // ------------------------------------------------
-  // APLICAR FILTROS
-  // ------------------------------------------------
-
-  function aplicarFiltros() {
-    const formatoFecha = /^\d{4}-\d{2}-\d{2}$/;
-
-    if (fechaDesde && !formatoFecha.test(fechaDesde)) {
-      Alert.alert("Fecha inválida", "Ingrese la fecha inicial como AAAA-MM-DD.");
-      return;
-    }
-
-    if (fechaHasta && !formatoFecha.test(fechaHasta)) {
-      Alert.alert("Fecha inválida", "Ingrese la fecha final como AAAA-MM-DD.");
-      return;
-    }
-
-    if (fechaDesde && fechaHasta && fechaDesde > fechaHasta) {
-      Alert.alert(
-        "Período inválido",
-        "La fecha inicial no puede ser posterior a la fecha final."
-      );
-      return;
-    }
-
-    setFiltrosAplicados({
-      tipoAccion: accion,
-      fechaDesde,
-      fechaHasta,
-      desde: 0,
-      limite: 50,
+    const [filtrosAplicados, setFiltrosAplicados] = useState({
+        tipoAccion: "Todos",
+        entidad: "Todos",
+        fechaDesde: "",
+        fechaHasta: "",
+        pagina: 1,
+        limite: LIMITE_PAGINA,
     });
-  }
 
-  function limpiarFiltros() {
-    setAccion("Todos");
-    setFechaDesde("");
-    setFechaHasta("");
+    // --------------------------------------------------------
+    // CONSULTAR HISTORIAL
+    // --------------------------------------------------------
 
-    setFiltrosAplicados({
-      tipoAccion: "Todos",
-      fechaDesde: "",
-      fechaHasta: "",
-      desde: 0,
-      limite: 50,
-    });
-  }
+    const consultar = useCallback(async (filtros, refrescar = false) => {
+        try {
+            if (refrescar) {
+                setActualizando(true);
+            } else {
+                setCargando(true);
+            }
 
-  // ------------------------------------------------
-  // DETALLE DEL CAMBIO
-  // ------------------------------------------------
+            setError("");
 
-  async function abrirDetalle(registro) {
-    setCargandoDetalle(true);
-    setDetalle(null);
+            const respuesta = await cargarHistorialCambios(filtros);
 
-    const respuesta = await cargarDetalleHistorial(
-      registro.historial_cambio_id
-    );
+            if (!respuesta?.correcto) {
+                throw new Error(
+                    respuesta?.mensaje ||
+                    "No se pudo consultar el historial."
+                );
+            }
 
-    setCargandoDetalle(false);
+            const datos = Array.isArray(respuesta.datos)
+                ? respuesta.datos
+                : [];
 
-    if (!respuesta?.correcto) {
-      Alert.alert(
-        "No se pudo consultar el detalle",
-        respuesta?.mensaje || "Intente nuevamente."
-      );
-      return;
-    }
+            const cantidadTotal = Number(respuesta.total) || 0;
 
-    setDetalle(respuesta.datos);
-  }
+            const limite =
+                Number(respuesta.limite) || LIMITE_PAGINA;
 
-  // ------------------------------------------------
-  // ESTADOS DE CARGA Y ERROR
-  // ------------------------------------------------
+            setRegistros(datos);
+            setTotal(cantidadTotal);
 
-  if (cargando && registros.length === 0 && !error) {
-    return (
-      <View style={styles.centro}>
-        <StatusBar backgroundColor="#12665E" barStyle="light-content" />
-        <ActivityIndicator size="large" color="#12665E" />
-        <Text style={styles.textoCarga}>
-          Consultando historial de cambios...
-        </Text>
-      </View>
-    );
-  }
+            setPagina(
+                Number(respuesta.pagina) ||
+                Number(filtros.pagina) ||
+                1
+            );
 
-  // ------------------------------------------------
-  // INTERFAZ PRINCIPAL
-  // ------------------------------------------------
+            setTotalPaginas(
+                Number(respuesta.totalPaginas) ||
+                Math.max(1, Math.ceil(cantidadTotal / limite))
+            );
+        } catch (e) {
+            console.error(
+                "Error al consultar historial:",
+                e
+            );
 
-  return (
-    <View style={styles.contenedor}>
-      <StatusBar backgroundColor="#12665E" barStyle="light-content" />
+            setError(
+                e?.message ||
+                "Ocurrió un error al consultar el historial."
+            );
 
-      <EncabezadoPetCare
-        titulo="Historial de cambios"
-        mostrarNotificaciones={false}
-        onAbrirMenu={() => router.push("/inicio")}
-      />
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.contenido}
-        refreshControl={
-          <RefreshControl
-            refreshing={actualizando}
-            onRefresh={() => consultar(filtrosAplicados, true)}
-            colors={["#12665E"]}
-          />
+            setRegistros([]);
+            setTotal(0);
+            setPagina(1);
+            setTotalPaginas(1);
+        } finally {
+            setCargando(false);
+            setActualizando(false);
         }
-      >
-        <View style={styles.encabezado}>
-          <Text style={styles.titulo}>
-            Historial de cambios
-          </Text>
+    }, []);
 
-          <Text style={styles.subtitulo}>
-            Consulta las acciones realizadas en el sistema PetCare.
-          </Text>
-        </View>
+    // --------------------------------------------------------
+    // RECARGAR AL ENTRAR A LA PANTALLA
+    // --------------------------------------------------------
 
-        {/* FILTROS */}
+    useFocusEffect(
+        useCallback(() => {
+            consultar(filtrosAplicados);
 
-        <View style={styles.tarjeta}>
-          <Text style={styles.tituloTarjeta}>
-            FILTRAR REGISTROS
-          </Text>
+            return undefined;
+        }, [consultar, filtrosAplicados])
+    );
 
-          <Text style={styles.etiqueta}>
-            TIPO DE ACCIÓN
-          </Text>
+    // --------------------------------------------------------
+    // VOLVER A ADMINISTRACIÓN
+    // --------------------------------------------------------
 
-          <View style={styles.opcionesAccion}>
-            {[
-              "Todos",
-              "CREAR",
-              "MODIFICAR",
-              "CAMBIAR_ESTADO",
-              "ELIMINAR",
-            ].map((opcion) => (
-              <TouchableOpacity
-                key={opcion}
-                style={[
-                  styles.opcion,
-                  accion === opcion && styles.opcionActiva,
-                ]}
-                onPress={() => setAccion(opcion)}
-              >
-                <Text
-                  style={[
-                    styles.textoOpcion,
-                    accion === opcion && styles.textoOpcionActivo,
-                  ]}
+    function volverAdministracion() {
+        router.replace('/administracion/administracion');
+    }
+
+    // --------------------------------------------------------
+    // APLICAR FILTRO DE ACCIÓN
+    // --------------------------------------------------------
+
+    function seleccionarAccion(valor) {
+        setAccion(valor);
+
+        setFiltrosAplicados({
+            tipoAccion: valor,
+
+            // Se mantienen estos valores neutros para conservar
+            // la estructura esperada por el controlador actual.
+            entidad: "Todos",
+            fechaDesde: "",
+            fechaHasta: "",
+
+            pagina: 1,
+            limite: LIMITE_PAGINA,
+        });
+    }
+
+    // --------------------------------------------------------
+    // PAGINACIÓN
+    // --------------------------------------------------------
+
+    function cambiarPagina(nuevaPagina) {
+        if (
+            nuevaPagina < 1 ||
+            nuevaPagina > totalPaginas ||
+            nuevaPagina === pagina ||
+            cargando
+        ) {
+            return;
+        }
+
+        setFiltrosAplicados((actuales) => ({
+            ...actuales,
+            pagina: nuevaPagina,
+        }));
+    }
+
+    // --------------------------------------------------------
+    // ABRIR DETALLE
+    // --------------------------------------------------------
+
+    function abrirDetalle(registro) {
+        const id = registro?.historial_cambio_id;
+
+        if (!id) {
+            setError(
+                "No se encontró el identificador del registro seleccionado."
+            );
+            return;
+        }
+
+        router.push({
+            pathname: "/historialCambios/detalle",
+            params: {
+                id: String(id),
+            },
+        });
+    }
+
+    // ========================================================
+    // INTERFAZ
+    // ========================================================
+
+    return (
+        <View style={styles.contenedor}>
+            <StatusBar
+                backgroundColor="#105D55"
+                barStyle="light-content"
+            />
+
+            <EncabezadoPetCare
+                titulo="Historial de cambios"
+                mostrarNotificaciones={false}
+                onAbrirMenu={() => router.push("/inicio")}
+            />
+
+            <ScrollView
+                style={styles.scroll}
+                contentContainerStyle={styles.contenido}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={actualizando}
+                        onRefresh={() => consultar(filtrosAplicados, true)}
+                        colors={["#12665E"]}
+                    />
+                }
+            >
+                {/* RUTA Y TÍTULO */}
+
+                <View style={styles.encabezadoPagina}>
+                    <Text style={styles.ruta}>
+                        <Text
+                            style={styles.rutaEnlace}
+                            onPress={() => router.push("/inicio")}
+                        >
+                            Inicio
+                        </Text>
+
+                        <Text style={styles.separadorRuta}>
+                            {" / "}
+                        </Text>
+
+                        <Text
+                            style={styles.rutaEnlace}
+                            onPress={volverAdministracion}
+                        >
+                            Administración
+                        </Text>
+
+                        <Text style={styles.separadorRuta}>
+                            {" / "}
+                        </Text>
+
+                        <Text style={styles.rutaActual}>
+                            Historial de cambios
+                        </Text>
+                    </Text>
+
+                    <View style={styles.filaTitulo}>
+                        <TouchableOpacity
+                            style={styles.botonVolver}
+                            onPress={volverAdministracion}
+                            accessibilityLabel="Volver a administración"
+                        >
+                            <Text style={styles.simboloVolver}>
+                                {"<"}
+                            </Text>
+                        </TouchableOpacity>
+
+                        <Text style={styles.titulo}>
+                            Historial de cambios
+                        </Text>
+                    </View>
+
+                    <Text style={styles.subtitulo}>
+                        Consulta las operaciones registradas en el sistema.
+                    </Text>
+                </View>
+
+                {/* FILTRO ÚNICO */}
+
+                <View style={styles.tarjetaFiltro}>
+                    <Text style={styles.etiquetaFiltro}>
+                        TIPO DE ACCIÓN
+                    </Text>
+
+                    <View style={styles.opcionesFiltro}>
+                        {ACCIONES.map((opcion) => {
+                            const seleccionada =
+                                accion === opcion.valor;
+
+                            return (
+                                <TouchableOpacity
+                                    key={opcion.valor}
+                                    style={[
+                                        styles.opcionFiltro,
+                                        seleccionada &&
+                                        styles.opcionFiltroActiva,
+                                    ]}
+                                    onPress={() =>
+                                        seleccionarAccion(opcion.valor)
+                                    }
+                                    disabled={cargando}
+                                    activeOpacity={0.75}
+                                >
+                                    <Text
+                                        style={[
+                                            styles.textoOpcion,
+                                            seleccionada &&
+                                            styles.textoOpcionActivo,
+                                        ]}
+                                    >
+                                        {opcion.etiqueta}
+                                    </Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+                </View>
+
+                {/* ERROR */}
+
+                {!!error && (
+                    <View style={styles.tarjetaError}>
+                        <Text style={styles.textoError}>
+                            {error}
+                        </Text>
+
+                        <TouchableOpacity
+                            onPress={() => consultar(filtrosAplicados)}
+                            style={styles.botonReintentar}
+                        >
+                            <Text style={styles.textoReintentar}>
+                                Reintentar
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* ENCABEZADO DE LISTA */}
+
+                <View style={styles.encabezadoLista}>
+                    <View>
+                        <Text style={styles.tituloLista}>
+                            Registros de actividad
+                        </Text>
+
+                        <Text style={styles.subtituloLista}>
+                            Selecciona un registro para consultar su detalle.
+                        </Text>
+                    </View>
+
+                    <Text style={styles.totalDiscreto}>
+                        {total} {total === 1 ? "registro" : "registros"}
+                    </Text>
+                </View>
+
+                {/* CARGA */}
+
+                {cargando && (
+                    <View style={styles.estadoCarga}>
+                        <ActivityIndicator
+                            size="large"
+                            color="#12665E"
+                        />
+
+                        <Text style={styles.textoCarga}>
+                            Consultando historial...
+                        </Text>
+                    </View>
+                )}
+
+                {/* SIN REGISTROS */}
+
+                {!cargando && registros.length === 0 && !error && (
+                    <View style={styles.sinRegistros}>
+                        <Text style={styles.iconoVacio}>
+                            {"▤"}
+                        </Text>
+
+                        <Text style={styles.tituloVacio}>
+                            No hay cambios registrados
+                        </Text>
+
+                        <Text style={styles.textoVacio}>
+                            No se encontraron registros para el tipo de acción seleccionado.
+                        </Text>
+                    </View>
+                )}
+
+                {/* LISTA DE REGISTROS */}
+
+                {!cargando && registros.map((registro) => {
+                    const colores = obtenerColorAccion(
+                        registro.tipo_accion
+                    );
+
+                    return (
+                        <TouchableOpacity
+                            key={String(registro.historial_cambio_id)}
+                            style={styles.tarjetaRegistro}
+                            onPress={() => abrirDetalle(registro)}
+                            activeOpacity={0.75}
+                        >
+                            <View style={styles.filaRegistro}>
+                                <View
+                                    style={[
+                                        styles.etiquetaAccion,
+                                        {
+                                            backgroundColor: colores.fondo,
+                                        },
+                                    ]}
+                                >
+                                    <Text
+                                        style={[
+                                            styles.textoAccion,
+                                            {
+                                                color: colores.texto,
+                                            },
+                                        ]}
+                                    >
+                                        {formatearAccion(
+                                            registro.tipo_accion
+                                        )}
+                                    </Text>
+                                </View>
+
+                                <Text style={styles.fechaRegistro}>
+                                    {formatearFechaHora(
+                                        registro.fecha_cambio
+                                    )}
+                                </Text>
+                            </View>
+
+                            <Text style={styles.descripcionRegistro}>
+                                {obtenerDescripcionRegistro(registro)}
+                            </Text>
+
+                            <View style={styles.detallesRegistro}>
+                                <View style={styles.datoRegistro}>
+                                    <Text style={styles.etiquetaDato}>
+                                        REGISTRO
+                                    </Text>
+
+                                    <Text style={styles.valorDato}>
+                                        {obtenerEtiquetaEntidad(
+                                            registro.entidad
+                                        )}
+                                    </Text>
+                                </View>
+
+                                <View style={styles.datoRegistro}>
+                                    <Text style={styles.etiquetaDato}>
+                                        IDENTIFICADOR
+                                    </Text>
+
+                                    <Text
+                                        style={styles.valorDato}
+                                        numberOfLines={1}
+                                    >
+                                        {registro.registro_id || "No disponible"}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.separadorRegistro} />
+
+                            <View style={styles.pieRegistro}>
+                                <Text style={styles.usuarioRegistro}>
+                                    Usuario: {registro.usuario_id || "No identificado"}
+                                </Text>
+
+                                <Text style={styles.verDetalle}>
+                                    Ver detalle →
+                                </Text>
+                            </View>
+                        </TouchableOpacity>
+                    );
+                })}
+
+                {/* PAGINACIÓN */}
+
+                {!cargando && totalPaginas > 1 && (
+                    <View style={styles.paginacion}>
+                        <TouchableOpacity
+                            style={[
+                                styles.botonPagina,
+                                pagina <= 1 &&
+                                styles.botonPaginaDesactivado,
+                            ]}
+                            disabled={pagina <= 1}
+                            onPress={() =>
+                                cambiarPagina(pagina - 1)
+                            }
+                        >
+                            <Text style={styles.textoPagina}>
+                                {"<"} Anterior
+                            </Text>
+                        </TouchableOpacity>
+
+                        <Text style={styles.numeroPagina}>
+                            {pagina} / {totalPaginas}
+                        </Text>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.botonPagina,
+                                pagina >= totalPaginas &&
+                                styles.botonPaginaDesactivado,
+                            ]}
+                            disabled={pagina >= totalPaginas}
+                            onPress={() =>
+                                cambiarPagina(pagina + 1)
+                            }
+                        >
+                            <Text style={styles.textoPagina}>
+                                Siguiente {">"}
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* ACTUALIZAR */}
+
+                <TouchableOpacity
+                    style={styles.botonActualizar}
+                    onPress={() => consultar(filtrosAplicados, true)}
+                    disabled={actualizando || cargando}
                 >
-                  {opcion === "CAMBIAR_ESTADO"
-                    ? "CAMBIAR ESTADO"
-                    : opcion}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.etiqueta}>
-            PERÍODO
-          </Text>
-
-          <View style={styles.filaFechas}>
-            <View style={styles.campoFecha}>
-              <Text style={styles.etiquetaPequena}>
-                Desde
-              </Text>
-
-              <TextInput
-                style={styles.input}
-                value={fechaDesde}
-                onChangeText={setFechaDesde}
-                placeholder="AAAA-MM-DD"
-                maxLength={10}
-              />
-            </View>
-
-            <View style={styles.campoFecha}>
-              <Text style={styles.etiquetaPequena}>
-                Hasta
-              </Text>
-
-              <TextInput
-                style={styles.input}
-                value={fechaHasta}
-                onChangeText={setFechaHasta}
-                placeholder="AAAA-MM-DD"
-                maxLength={10}
-              />
-            </View>
-          </View>
-
-          <View style={styles.filaBotones}>
-            <TouchableOpacity
-              style={styles.botonBuscar}
-              onPress={aplicarFiltros}
-            >
-              <Text style={styles.textoBotonBuscar}>
-                Buscar
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.botonLimpiar}
-              onPress={limpiarFiltros}
-            >
-              <Text style={styles.textoBotonLimpiar}>
-                Limpiar
-              </Text>
-            </TouchableOpacity>
-          </View>
+                    {actualizando ? (
+                        <ActivityIndicator color="#12665E" />
+                    ) : (
+                        <Text style={styles.textoActualizar}>
+                            Actualizar historial
+                        </Text>
+                    )}
+                </TouchableOpacity>
+            </ScrollView>
         </View>
-
-        {/* RESUMEN */}
-
-        <View style={styles.resumen}>
-          <View>
-            <Text style={styles.numeroResumen}>
-              {registros.length}
-            </Text>
-
-            <Text style={styles.textoResumen}>
-              Registros encontrados en esta consulta
-            </Text>
-          </View>
-
-          <Text style={styles.iconoResumen}>
-            ◷
-          </Text>
-        </View>
-
-        {/* ERROR */}
-
-        {error !== "" && (
-          <View style={styles.error}>
-            <Text style={styles.textoError}>
-              {error}
-            </Text>
-
-            <TouchableOpacity
-              onPress={() => consultar(filtrosAplicados)}
-            >
-              <Text style={styles.reintentar}>
-                Reintentar
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* LISTA */}
-
-        <Text style={styles.tituloLista}>
-          REGISTROS DE ACTIVIDAD
-        </Text>
-
-        {cargando && (
-          <ActivityIndicator
-            color="#12665E"
-            style={{ margin: 15 }}
-          />
-        )}
-
-        {!cargando && registros.length === 0 && !error && (
-          <View style={styles.sinRegistros}>
-            <Text style={styles.iconoVacio}>▤</Text>
-
-            <Text style={styles.tituloVacio}>
-              No hay cambios registrados
-            </Text>
-
-            <Text style={styles.textoVacio}>
-              Cuando se registren modificaciones en el sistema,
-              aparecerán aquí.
-            </Text>
-          </View>
-        )}
-
-        {registros.map((registro) => (
-          <TouchableOpacity
-            key={String(registro.historial_cambio_id)}
-            style={styles.tarjetaRegistro}
-            onPress={() => abrirDetalle(registro)}
-            activeOpacity={0.75}
-          >
-            <View style={styles.filaRegistro}>
-              <View
-                style={[
-                  styles.etiquetaAccion,
-                  {
-                    backgroundColor: colorAccion(registro.tipo_accion),
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.textoAccion,
-                    {
-                      color: colorTextoAccion(registro.tipo_accion),
-                    },
-                  ]}
-                >
-                  {String(registro.tipo_accion || "SIN ACCIÓN").replace(
-                    "_",
-                    " "
-                  )}
-                </Text>
-              </View>
-
-              <Text style={styles.fechaRegistro}>
-                {formatearFechaHora(registro.fecha_cambio)}
-              </Text>
-            </View>
-
-            <Text style={styles.usuarioRegistro}>
-              Usuario: {registro.usuario_id ?? "No identificado"}
-            </Text>
-
-            <Text style={styles.rolRegistro}>
-              Rol: {registro.rol_usuario || "No especificado"}
-            </Text>
-
-            <Text style={styles.registroRelacionado}>
-              {registro.actividad_id
-                ? `Actividad: ${registro.actividad_id}`
-                : registro.atencion_id
-                  ? `Atención: ${registro.atencion_id}`
-                  : "Registro general"}
-            </Text>
-
-            <Text style={styles.verDetalle}>
-              Ver detalle →
-            </Text>
-          </TouchableOpacity>
-        ))}
-
-        <TouchableOpacity
-          style={styles.botonActualizar}
-          onPress={() => consultar(filtrosAplicados, true)}
-          disabled={actualizando}
-        >
-          {actualizando ? (
-            <ActivityIndicator color="#12665E" />
-          ) : (
-            <Text style={styles.textoActualizar}>
-              ↻ Actualizar historial
-            </Text>
-          )}
-        </TouchableOpacity>
-      </ScrollView>
-
-      {/* DETALLE */}
-
-      {(detalle || cargandoDetalle) && (
-        <View style={styles.fondoModal}>
-          <View style={styles.modal}>
-            <View style={styles.filaModal}>
-              <Text style={styles.tituloModal}>
-                Detalle del cambio
-              </Text>
-
-              <TouchableOpacity
-                onPress={() => setDetalle(null)}
-              >
-                <Text style={styles.cerrarModal}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            {cargandoDetalle ? (
-              <ActivityIndicator
-                size="large"
-                color="#12665E"
-                style={{ margin: 25 }}
-              />
-            ) : (
-              <ScrollView style={styles.contenidoModal}>
-                <Text style={styles.etiquetaDetalle}>
-                  TIPO DE ACCIÓN
-                </Text>
-
-                <Text style={styles.valorDetalle}>
-                  {detalle?.tipo_accion}
-                </Text>
-
-                <Text style={styles.etiquetaDetalle}>
-                  FECHA Y HORA
-                </Text>
-
-                <Text style={styles.valorDetalle}>
-                  {formatearFechaHora(detalle?.fecha_cambio)}
-                </Text>
-
-                <Text style={styles.etiquetaDetalle}>
-                  USUARIO
-                </Text>
-
-                <Text style={styles.valorDetalle}>
-                  {detalle?.usuario_id ?? "No identificado"}
-                </Text>
-
-                <Text style={styles.etiquetaDetalle}>
-                  ROL
-                </Text>
-
-                <Text style={styles.valorDetalle}>
-                  {detalle?.rol_usuario || "No especificado"}
-                </Text>
-
-                <Text style={styles.etiquetaDetalle}>
-                  DATOS ANTERIORES
-                </Text>
-
-                <Text style={styles.json}>
-                  {formatearJSON(detalle?.datos_anteriores)}
-                </Text>
-
-                <Text style={styles.etiquetaDetalle}>
-                  DATOS NUEVOS
-                </Text>
-
-                <Text style={styles.json}>
-                  {formatearJSON(detalle?.datos_nuevos)}
-                </Text>
-              </ScrollView>
-            )}
-
-            <TouchableOpacity
-              style={styles.botonCerrar}
-              onPress={() => setDetalle(null)}
-            >
-              <Text style={styles.textoBotonCerrar}>
-                Cerrar
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-    </View>
-  );
+    );
 }
 
-// --------------------------------------------------
+// ============================================================
 // ESTILOS
-// --------------------------------------------------
+// ============================================================
 
 const styles = StyleSheet.create({
-  contenedor: {
-    flex: 1,
-    backgroundColor: "#F4F7F6",
-  },
+    contenedor: {
+        flex: 1,
+        backgroundColor: "#F4F7F6",
+    },
 
-  scroll: {
-    flex: 1,
-  },
+    scroll: {
+        flex: 1,
+    },
 
-  contenido: {
-    padding: 16,
-    paddingBottom: 35,
-  },
+    contenido: {
+        paddingHorizontal: 24,
+        paddingTop: 20,
+        paddingBottom: 45,
+        maxWidth: 1200,
+        width: "100%",
+        alignSelf: "center",
+    },
 
-  centro: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#F4F7F6",
-  },
+    encabezadoPagina: {
+        marginBottom: 23,
+    },
 
-  textoCarga: {
-    color: "#53645F",
-    marginTop: 12,
-    fontSize: 14,
-  },
+    ruta: {
+        fontSize: 11,
+        marginBottom: 17,
+        color: "#84928C",
+    },
 
-  encabezado: {
-    marginBottom: 18,
-  },
+    rutaEnlace: {
+        color: "#71847B",
+    },
 
-  titulo: {
-    fontSize: 23,
-    fontWeight: "bold",
-    color: "#173D38",
-  },
+    separadorRuta: {
+        color: "#AAB6B0",
+    },
 
-  subtitulo: {
-    fontSize: 13,
-    color: "#71817C",
-    marginTop: 5,
-    lineHeight: 19,
-  },
+    rutaActual: {
+        color: "#315A4E",
+        fontWeight: "700",
+    },
 
-  tarjeta: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#E7EEEB",
-    elevation: 2,
-  },
+    filaTitulo: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+    },
 
-  tituloTarjeta: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#244B44",
-    marginBottom: 16,
-  },
+    botonVolver: {
+        width: 34,
+        height: 34,
+        borderRadius: 8,
+        backgroundColor: "#FFFFFF",
+        borderWidth: 1,
+        borderColor: "#DCE7E2",
+        justifyContent: "center",
+        alignItems: "center",
+    },
 
-  etiqueta: {
-    fontSize: 11,
-    fontWeight: "bold",
-    color: "#53645F",
-    marginBottom: 9,
-    letterSpacing: 0.5,
-  },
+    simboloVolver: {
+        color: "#12665E",
+        fontSize: 21,
+        fontWeight: "500",
+        lineHeight: 25,
+    },
 
-  opcionesAccion: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 7,
-    marginBottom: 16,
-  },
+    titulo: {
+        color: "#173D38",
+        fontSize: 25,
+        fontWeight: "800",
+        flex: 1,
+    },
 
-  opcion: {
-    paddingVertical: 9,
-    paddingHorizontal: 11,
-    borderWidth: 1,
-    borderColor: "#DCE6E2",
-    borderRadius: 8,
-    backgroundColor: "#FFFFFF",
-  },
+    subtitulo: {
+        color: "#7B8983",
+        fontSize: 12,
+        marginTop: 8,
+        marginLeft: 46,
+    },
 
-  opcionActiva: {
-    backgroundColor: "#E5F2EE",
-    borderColor: "#12665E",
-  },
+    tarjetaFiltro: {
+        backgroundColor: "#FFFFFF",
+        borderRadius: 12,
+        padding: 18,
+        marginBottom: 24,
+        borderWidth: 1,
+        borderColor: "#E5ECE9",
+    },
 
-  textoOpcion: {
-    color: "#53645F",
-    fontSize: 10,
-    fontWeight: "600",
-  },
+    etiquetaFiltro: {
+        color: "#65776F",
+        fontSize: 10,
+        fontWeight: "800",
+        letterSpacing: 0.7,
+        marginBottom: 13,
+    },
 
-  textoOpcionActivo: {
-    color: "#12665E",
-  },
+    opcionesFiltro: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 9,
+    },
 
-  filaFechas: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 16,
-  },
+    opcionFiltro: {
+        minHeight: 37,
+        paddingHorizontal: 15,
+        paddingVertical: 9,
+        borderRadius: 7,
+        borderWidth: 1,
+        borderColor: "#E0E8E4",
+        backgroundColor: "#FFFFFF",
+        justifyContent: "center",
+        alignItems: "center",
+    },
 
-  campoFecha: {
-    flex: 1,
-  },
+    opcionFiltroActiva: {
+        backgroundColor: "#E8F3EF",
+        borderColor: "#12665E",
+    },
 
-  etiquetaPequena: {
-    fontSize: 11,
-    color: "#82908B",
-    marginBottom: 5,
-  },
+    textoOpcion: {
+        color: "#66776F",
+        fontSize: 11,
+        fontWeight: "600",
+    },
 
-  input: {
-    height: 43,
-    borderWidth: 1,
-    borderColor: "#DCE6E2",
-    borderRadius: 8,
-    paddingHorizontal: 9,
-    fontSize: 12,
-    color: "#28433D",
-  },
+    textoOpcionActivo: {
+        color: "#12665E",
+        fontWeight: "800",
+    },
 
-  filaBotones: {
-    flexDirection: "row",
-    gap: 10,
-  },
+    encabezadoLista: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 13,
+        gap: 10,
+    },
 
-  botonBuscar: {
-    flex: 1,
-    height: 43,
-    borderRadius: 8,
-    backgroundColor: "#12665E",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+    tituloLista: {
+        color: "#31564C",
+        fontSize: 15,
+        fontWeight: "800",
+    },
 
-  textoBotonBuscar: {
-    color: "#FFFFFF",
-    fontWeight: "bold",
-    fontSize: 13,
-  },
+    subtituloLista: {
+        color: "#8A9791",
+        fontSize: 11,
+        marginTop: 4,
+    },
 
-  botonLimpiar: {
-    height: 43,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#EAF2EF",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+    totalDiscreto: {
+        color: "#8A9791",
+        fontSize: 10,
+    },
 
-  textoBotonLimpiar: {
-    color: "#12665E",
-    fontWeight: "bold",
-    fontSize: 13,
-  },
+    estadoCarga: {
+        backgroundColor: "#FFFFFF",
+        borderRadius: 11,
+        padding: 28,
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "#E5ECE9",
+    },
 
-  resumen: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 13,
-    padding: 17,
-    marginBottom: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: "#E7EEEB",
-  },
+    textoCarga: {
+        color: "#7B8983",
+        fontSize: 12,
+        marginTop: 11,
+    },
 
-  numeroResumen: {
-    color: "#12665E",
-    fontSize: 30,
-    fontWeight: "bold",
-  },
+    tarjetaRegistro: {
+        backgroundColor: "#FFFFFF",
+        borderRadius: 11,
+        padding: 17,
+        marginBottom: 11,
+        borderWidth: 1,
+        borderColor: "#E5ECE9",
+    },
 
-  textoResumen: {
-    color: "#71817C",
-    fontSize: 12,
-    marginTop: 3,
-  },
+    filaRegistro: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        flexWrap: "wrap",
+        gap: 9,
+        marginBottom: 12,
+    },
 
-  iconoResumen: {
-    fontSize: 32,
-    color: "#279889",
-  },
+    etiquetaAccion: {
+        borderRadius: 5,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+    },
 
-  tituloLista: {
-    color: "#53645F",
-    fontSize: 12,
-    fontWeight: "bold",
-    marginBottom: 12,
-    letterSpacing: 0.5,
-  },
+    textoAccion: {
+        fontSize: 10,
+        fontWeight: "800",
+    },
 
-  tarjetaRegistro: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 11,
-    borderWidth: 1,
-    borderColor: "#E7EEEB",
-  },
+    fechaRegistro: {
+        color: "#899690",
+        fontSize: 10,
+    },
 
-  filaRegistro: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 12,
-  },
+    descripcionRegistro: {
+        color: "#24483F",
+        fontSize: 14,
+        fontWeight: "800",
+        marginBottom: 14,
+    },
 
-  etiquetaAccion: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
+    detallesRegistro: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 28,
+    },
 
-  textoAccion: {
-    fontSize: 10,
-    fontWeight: "bold",
-  },
+    datoRegistro: {
+        minWidth: 130,
+        maxWidth: "100%",
+        flex: 1,
+    },
 
-  fechaRegistro: {
-    color: "#82908B",
-    fontSize: 10,
-  },
+    etiquetaDato: {
+        color: "#9AA6A1",
+        fontSize: 9,
+        fontWeight: "800",
+        marginBottom: 5,
+    },
 
-  usuarioRegistro: {
-    color: "#28433D",
-    fontSize: 13,
-    fontWeight: "bold",
-    marginBottom: 6,
-  },
+    valorDato: {
+        color: "#526A61",
+        fontSize: 11,
+        fontWeight: "600",
+    },
 
-  rolRegistro: {
-    color: "#71817C",
-    fontSize: 12,
-    marginBottom: 5,
-  },
+    separadorRegistro: {
+        height: 1,
+        backgroundColor: "#EDF1EF",
+        marginTop: 14,
+        marginBottom: 10,
+    },
 
-  registroRelacionado: {
-    color: "#71817C",
-    fontSize: 12,
-  },
+    pieRegistro: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: 8,
+    },
 
-  verDetalle: {
-    color: "#12665E",
-    fontSize: 12,
-    fontWeight: "bold",
-    textAlign: "right",
-    marginTop: 13,
-  },
+    usuarioRegistro: {
+        color: "#83918B",
+        fontSize: 10,
+    },
 
-  sinRegistros: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 25,
-    alignItems: "center",
-    marginBottom: 15,
-  },
+    verDetalle: {
+        color: "#12665E",
+        fontSize: 11,
+        fontWeight: "800",
+    },
 
-  iconoVacio: {
-    color: "#A7B8B1",
-    fontSize: 35,
-    marginBottom: 10,
-  },
+    sinRegistros: {
+        backgroundColor: "#FFFFFF",
+        borderRadius: 11,
+        padding: 30,
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "#E5ECE9",
+    },
 
-  tituloVacio: {
-    color: "#28433D",
-    fontWeight: "bold",
-    fontSize: 14,
-  },
+    iconoVacio: {
+        color: "#A5B5AE",
+        fontSize: 35,
+        marginBottom: 10,
+    },
 
-  textoVacio: {
-    color: "#82908B",
-    textAlign: "center",
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 7,
-  },
+    tituloVacio: {
+        color: "#34564E",
+        fontSize: 14,
+        fontWeight: "800",
+    },
 
-  error: {
-    padding: 13,
-    borderRadius: 9,
-    backgroundColor: "#FCE9E7",
-    marginBottom: 15,
-  },
+    textoVacio: {
+        color: "#899690",
+        fontSize: 11,
+        lineHeight: 18,
+        textAlign: "center",
+        marginTop: 7,
+        maxWidth: 420,
+    },
 
-  textoError: {
-    color: "#A33B32",
-    fontSize: 12,
-  },
+    tarjetaError: {
+        backgroundColor: "#FCEBE9",
+        borderRadius: 9,
+        padding: 14,
+        marginBottom: 15,
+    },
 
-  reintentar: {
-    color: "#12665E",
-    fontWeight: "bold",
-    marginTop: 8,
-    fontSize: 12,
-  },
+    textoError: {
+        color: "#A33B32",
+        fontSize: 12,
+        lineHeight: 18,
+    },
 
-  botonActualizar: {
-    height: 44,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: "#12665E",
-    backgroundColor: "#FFFFFF",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 8,
-  },
+    botonReintentar: {
+        alignSelf: "flex-start",
+        marginTop: 9,
+    },
 
-  textoActualizar: {
-    color: "#12665E",
-    fontWeight: "bold",
-    fontSize: 13,
-  },
+    textoReintentar: {
+        color: "#12665E",
+        fontWeight: "800",
+        fontSize: 12,
+    },
 
-  fondoModal: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 18,
-  },
+    paginacion: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginVertical: 18,
+        gap: 10,
+    },
 
-  modal: {
-    width: "100%",
-    maxHeight: "85%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 15,
-    padding: 17,
-  },
+    botonPagina: {
+        backgroundColor: "#12665E",
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 7,
+    },
 
-  filaModal: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 15,
-  },
+    botonPaginaDesactivado: {
+        backgroundColor: "#AABAB5",
+    },
 
-  tituloModal: {
-    color: "#244B44",
-    fontSize: 17,
-    fontWeight: "bold",
-  },
+    textoPagina: {
+        color: "#FFFFFF",
+        fontSize: 11,
+        fontWeight: "800",
+    },
 
-  cerrarModal: {
-    color: "#53645F",
-    fontSize: 21,
-    paddingHorizontal: 5,
-  },
+    numeroPagina: {
+        color: "#526A61",
+        fontSize: 11,
+        fontWeight: "800",
+    },
 
-  contenidoModal: {
-    flexGrow: 0,
-  },
+    botonActualizar: {
+        minHeight: 42,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: "#D5E3DD",
+        backgroundColor: "#FFFFFF",
+        justifyContent: "center",
+        alignItems: "center",
+        marginTop: 8,
+    },
 
-  etiquetaDetalle: {
-    color: "#12665E",
-    fontSize: 10,
-    fontWeight: "bold",
-    marginTop: 13,
-    marginBottom: 5,
-  },
-
-  valorDetalle: {
-    color: "#28433D",
-    fontSize: 13,
-  },
-
-  json: {
-    color: "#53645F",
-    backgroundColor: "#F4F7F6",
-    padding: 10,
-    borderRadius: 7,
-    fontSize: 11,
-    lineHeight: 17,
-  },
-
-  botonCerrar: {
-    backgroundColor: "#12665E",
-    height: 43,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 15,
-  },
-
-  textoBotonCerrar: {
-    color: "#FFFFFF",
-    fontWeight: "bold",
-  },
+    textoActualizar: {
+        color: "#12665E",
+        fontWeight: "800",
+        fontSize: 12,
+    },
 });

@@ -1,6 +1,6 @@
 
+// src/app/mascotas/index.jsx
 
- // src/app/mascotas/index.jsx
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -18,7 +18,7 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 
 import { supabase } from '../../services/supabase';
-import { consultarMascotas } from '../../dao/mascotaDAO';
+import { consultarMascotas } from '../../dao/mascotas/mascotaDAO';
 import {
   validarTerminoBusquedaMascotas,
   filtrarMascotasPorBusqueda,
@@ -26,9 +26,7 @@ import {
 } from '../../utils/validacionesBusquedaMascotas';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
-import { logger } from '../../utils/logger';
 
-// Colores compartidos con las demás pantallas de PetCare.
 const C = {
   primario: '#187C72',
   primarioOscuro: '#12665E',
@@ -42,7 +40,7 @@ const C = {
   verdeFondo: '#E4F3F0',
 };
 
-// Devuelve el nombre completo del propietario de la mascota.
+// Devuelve el nombre completo del propietario.
 function nombrePropietario(mascota) {
   const propietario = mascota?.propietarios;
 
@@ -57,16 +55,18 @@ function nombrePropietario(mascota) {
     .trim() || 'No registrado';
 }
 
+// Obtiene la inicial del nombre de la mascota.
+function obtenerInicial(nombre) {
+  return nombre?.trim()?.charAt(0)?.toUpperCase() || '?';
+}
+
 export default function ListaMascotasScreen() {
-  // Datos de la lista y estados de carga.
   const [mascotas, setMascotas] = useState([]);
   const [busqueda, setBusqueda] = useState('');
-  const [busquedaAplicada, setBusquedaAplicada] = useState('');
   const [cargando, setCargando] = useState(true);
   const [actualizando, setActualizando] = useState(false);
   const [error, setError] = useState('');
 
-  // Estado y datos necesarios para el menú lateral.
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [nombreUsuario, setNombreUsuario] = useState('Usuario');
   const [rolUsuario, setRolUsuario] = useState('');
@@ -91,7 +91,7 @@ export default function ListaMascotasScreen() {
           .single();
 
         if (errorPerfil) {
-          logger.error(
+          console.error(
             'Error al consultar el perfil:',
             errorPerfil.message
           );
@@ -103,7 +103,7 @@ export default function ListaMascotasScreen() {
           setRolUsuario(data.rol || '');
         }
       } catch (e) {
-        logger.error('Error al cargar el perfil:', e);
+        console.error('Error al cargar el perfil:', e);
       }
     }
 
@@ -123,7 +123,7 @@ export default function ListaMascotasScreen() {
 
       setMascotas(Array.isArray(resultado) ? resultado : []);
     } catch (e) {
-      logger.error('Error al cargar mascotas:', e);
+      console.error('Error al cargar mascotas:', e);
       setError('No se pudieron cargar las mascotas.');
     } finally {
       setCargando(false);
@@ -131,42 +131,47 @@ export default function ListaMascotasScreen() {
     }
   }, []);
 
-  // Recarga la lista cada vez que la pantalla vuelve a estar activa.
+  // Recarga la lista cuando la pantalla vuelve a estar activa.
   useFocusEffect(
     useCallback(() => {
       cargarMascotas();
     }, [cargarMascotas])
   );
 
-  // RF16: aplica el filtro al término que ya fue validado.
+  // RF16: valida y filtra automáticamente mientras se escribe.
+  const validacionBusqueda = validarTerminoBusquedaMascotas(busqueda);
+
+  const terminoBusqueda = validacionBusqueda.valido
+    ? validacionBusqueda.termino
+    : '';
+
   const mascotasFiltradas = filtrarMascotasPorBusqueda(
     mascotas,
-    busquedaAplicada
+    terminoBusqueda
   );
 
-  // RF16: valida el término antes de aplicar la búsqueda.
-  function ejecutarBusqueda() {
-    const validacion = validarTerminoBusquedaMascotas(busqueda);
+  // RF16: actualiza y valida el texto de búsqueda.
+  function cambiarBusqueda(texto) {
+    setBusqueda(texto);
+
+    const validacion = validarTerminoBusquedaMascotas(texto);
 
     if (!validacion.valido) {
       setError(validacion.mensaje);
-      return;
+    } else {
+      setError('');
     }
-
-    setError('');
-    setBusquedaAplicada(validacion.termino);
   }
 
-  // RF16: limpia el campo, los mensajes y el filtro aplicado.
+  // RF16: limpia el campo y recupera todas las mascotas.
   function limpiarBusqueda() {
     setBusqueda('');
-    setBusquedaAplicada('');
     setError('');
   }
 
-  // RF16: determina si la búsqueda válida no obtuvo coincidencias.
+  // RF16: mensaje cuando no existen coincidencias.
   const mensajeSinResultados = obtenerMensajeResultadoBusqueda(
-    busquedaAplicada,
+    terminoBusqueda,
     mascotasFiltradas
   );
 
@@ -185,12 +190,12 @@ export default function ListaMascotasScreen() {
     });
   }
 
-  // Navega al formulario de registro de una nueva mascota.
+  // Abre el formulario de registro.
   function abrirRegistro() {
     router.push('/mascotas/nuevaMascota');
   }
 
-  // Regresa a la pantalla anterior usando únicamente la flecha.
+  // Regresa a la pantalla anterior.
   function volver() {
     if (router.canGoBack()) {
       router.back();
@@ -199,7 +204,7 @@ export default function ListaMascotasScreen() {
     }
   }
 
-  // Cierra la sesión desde el menú lateral.
+  // Cierra la sesión.
   async function cerrarSesion() {
     try {
       const { error: errorSesion } = await supabase.auth.signOut();
@@ -215,7 +220,7 @@ export default function ListaMascotasScreen() {
       setMenuAbierto(false);
       router.replace('/');
     } catch (e) {
-      logger.error('Error al cerrar sesión:', e);
+      console.error('Error al cerrar sesión:', e);
 
       Alert.alert(
         'Error',
@@ -224,7 +229,7 @@ export default function ListaMascotasScreen() {
     }
   }
 
-  // Cada mascota se muestra como una fila amplia.
+  // Renderiza cada mascota con la inicial de su nombre.
   const renderMascota = ({ item }) => (
     <TouchableOpacity
       style={styles.filaMascota}
@@ -234,7 +239,9 @@ export default function ListaMascotasScreen() {
       accessibilityLabel={`Ver ficha de ${item.nombre || 'mascota'}`}
     >
       <View style={styles.iconoMascota}>
-        <Text style={styles.huella}>🐾</Text>
+        <Text style={styles.inicialMascota}>
+          {obtenerInicial(item.nombre)}
+        </Text>
       </View>
 
       <View style={styles.datosMascota}>
@@ -296,13 +303,6 @@ export default function ListaMascotasScreen() {
 
               <Text style={styles.titulo}>Mascotas</Text>
             </View>
-
-            <Text style={styles.subtitulo}>
-              {mascotasFiltradas.length}{' '}
-              {mascotasFiltradas.length === 1
-                ? 'mascota encontrada'
-                : 'mascotas encontradas'}
-            </Text>
           </View>
 
           <TouchableOpacity
@@ -313,27 +313,24 @@ export default function ListaMascotasScreen() {
             accessibilityLabel="Registrar nueva mascota"
           >
             <Text style={styles.textoBotonNueva}>
-              + Nueva mascota
+              + Nuevo
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* RF16: búsqueda validada por botón o teclado. */}
+        {/* RF16: búsqueda automática sin botón Buscar. */}
         <View style={styles.buscador}>
           <Text style={styles.iconoBuscar}>⌕</Text>
 
           <TextInput
             style={styles.inputBusqueda}
             value={busqueda}
-            onChangeText={(texto) => {
-              setBusqueda(texto);
-              setError('');
-            }}
-            onSubmitEditing={ejecutarBusqueda}
+            onChangeText={cambiarBusqueda}
             placeholder="Buscar por nombre, historia o propietario..."
             placeholderTextColor="#8A9996"
             returnKeyType="search"
             autoCapitalize="none"
+            autoCorrect={false}
             accessibilityLabel="Buscar mascotas"
           />
 
@@ -347,16 +344,15 @@ export default function ListaMascotasScreen() {
               <Text style={styles.limpiar}>×</Text>
             </TouchableOpacity>
           )}
-
-          <TouchableOpacity
-            onPress={ejecutarBusqueda}
-            accessibilityRole="button"
-            accessibilityLabel="Buscar mascotas"
-            style={styles.botonBuscar}
-          >
-            <Text style={styles.textoBotonBuscar}>Buscar</Text>
-          </TouchableOpacity>
         </View>
+
+        {/* Cantidad total de mascotas registradas. */}
+        <Text style={styles.subtitulo}>
+          {mascotas.length}{' '}
+          {mascotas.length === 1
+            ? 'mascota registrada'
+            : 'mascotas registradas'}
+        </Text>
 
         {/* Mensaje de validación o error. */}
         {!!error && (
@@ -417,7 +413,7 @@ export default function ListaMascotasScreen() {
                 <Text style={styles.huellaVacia}>🐾</Text>
 
                 <Text style={styles.nombreVacio}>
-                  {busquedaAplicada
+                  {terminoBusqueda
                     ? 'No se encontraron mascotas'
                     : mascotas.length === 0
                       ? 'No hay mascotas registradas'
@@ -425,7 +421,7 @@ export default function ListaMascotasScreen() {
                 </Text>
 
                 <Text style={styles.descripcionVacia}>
-                  {busquedaAplicada
+                  {terminoBusqueda
                     ? mensajeSinResultados
                     : 'Puedes registrar una nueva mascota para comenzar.'}
                 </Text>
@@ -513,7 +509,8 @@ const styles = StyleSheet.create({
   subtitulo: {
     color: C.secundario,
     fontSize: 13,
-    marginTop: 5,
+    marginTop: -7,
+    marginBottom: 16,
     lineHeight: 19,
   },
 
@@ -521,7 +518,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     backgroundColor: C.primario,
     borderRadius: 10,
-    paddingHorizontal: 13,
+    paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -569,20 +566,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
   },
 
-  botonBuscar: {
-    backgroundColor: C.primario,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    marginLeft: 4,
-  },
-
-  textoBotonBuscar: {
-    color: C.blanco,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-
   lista: {
     flex: 1,
   },
@@ -614,8 +597,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  huella: {
-    fontSize: 23,
+  inicialMascota: {
+    color: C.primarioOscuro,
+    fontSize: 21,
+    fontWeight: '800',
   },
 
   datosMascota: {

@@ -17,14 +17,14 @@
 import {
   buscarMascotasAdministracionDAO,
   cambiarEstadoMascotaDAO,
-} from '../../dao/mascotaDAO';
+} from '../../dao/mascotas/mascotaDAO';
 
 import {
   buscarMascotasAdministracion,
   gestionarEstadoMascota,
 } from '../../services/administracion/mascotasService';
 
-jest.mock('../../dao/mascotaDAO', () => ({
+jest.mock('../../dao/mascotas/mascotaDAO', () => ({
   buscarMascotasAdministracionDAO: jest.fn(),
   consultarMascotasAdministracionDAO: jest.fn(),
   cambiarEstadoMascotaDAO: jest.fn(),

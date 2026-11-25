@@ -16,7 +16,7 @@ import {
   buscarMascotasAdministracionDAO,
   consultarMascotasAdministracionDAO,
   cambiarEstadoMascotaDAO,
-} from '../../dao/mascotaDAO';
+} from '../../dao/mascotas/mascotaDAO';
 
 const ESTADOS_VALIDOS = ['Activo', 'Inactivo'];
 

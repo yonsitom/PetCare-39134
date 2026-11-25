@@ -1,13 +1,13 @@
 import {
   verificarAtencionListaParaFinalizar,
-} from '../../dao/verificarAtencionDAO';
+} from '../../dao/atencion/verificarAtencionDAO';
 
 import {
   consultarActividadesPorAtencion,
-} from '../../dao/actividadesDAO';
+} from '../../dao/actividades/actividadesDAO';
 
-jest.mock('../../dao/actividadesDAO', () => {
-  const original = jest.requireActual('../../dao/actividadesDAO');
+jest.mock('../../dao/actividades/actividadesDAO', () => {
+  const original = jest.requireActual('../../dao/actividades/actividadesDAO');
 
   return {
     ...original,

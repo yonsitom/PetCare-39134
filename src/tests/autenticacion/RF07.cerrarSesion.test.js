@@ -10,7 +10,7 @@
  * aquí se prueba exclusivamente el servicio.
  */
 
-import { cerrarSesionServicio } from '../../services/cerrarSesionServicio';
+import { cerrarSesionServicio } from '../../services/persistencia/cerrarSesionServicio';
 
 describe('RF07 - Servicio de cierre de sesión', () => {
   let clienteSupabase;

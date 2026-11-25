@@ -1,28 +1,36 @@
+
 /**
- * Controlador de actividades.
+ * ============================================================
+ * PETCARE - CONTROLADOR DE ACTIVIDADES
+ * ============================================================
  *
- * RF10: consultar actividades por estado.
- * RF25: actualizar el estado de una actividad.
+ * RF10: Consultar actividades por estado.
+ * RF24: Consultar el detalle completo de una actividad.
+ * RF25: Cambiar y reactivar estado.
+ * RF32: Modificar actividad.
+ * Eliminación lógica de actividades.
  *
- * MVC:
- * - Vista: src/app/actividades.jsx y detalleActividad.jsx
- * - Controlador: este archivo
- * - Servicio: src/services/actividadesServicio.js
- * - DAO: src/dao/actividadesDAO.js
- *
- * SOLID:
- * - SRP: coordina las solicitudes de la vista.
- * - DIP: delega las operaciones en el servicio.
+ * Arquitectura:
+ * Vista -> Controlador -> Servicio -> DAO -> Supabase.
+ * ============================================================
  */
 
 import {
   obtenerActividadesPorEstado,
+  obtenerActividadesPorAtencion,
+  obtenerDetalleActividadServicio,
   cambiarEstadoActividadServicio,
-} from '../../services/actividadesServicio';
+  reactivarActividadServicio,
+  editarActividadServicio,
+  eliminarActividadServicio,
+  verificarAtencionListaParaFinalizarServicio,
+  finalizarAtencionServicio,
+} from '../../services/atencion/actividadesServicio';
 
-/**
- * RF10: listar actividades de un estado válido.
- */
+/* ============================================================
+   RF10 - CONSULTAR ACTIVIDADES
+   ============================================================ */
+
 export async function listarActividadesPorEstado(estado) {
   const resultado = await obtenerActividadesPorEstado(estado);
 
@@ -33,20 +41,57 @@ export async function listarActividadesPorEstado(estado) {
   }
 
   return resultado.filter(
-    actividad => actividad?.eliminado !== true
+    (actividad) => actividad && actividad.eliminado !== true
   );
 }
 
-/**
- * Alias para mantener compatibilidad con otros módulos.
- */
 export async function consultarActividadesPorEstado(estado) {
   return listarActividadesPorEstado(estado);
 }
 
+export async function consultarActividadesPorAtencion(atencionId) {
+  const resultado = await obtenerActividadesPorAtencion(atencionId);
+
+  if (!Array.isArray(resultado)) {
+    throw new Error(
+      'No se pudieron consultar las actividades de la atención.'
+    );
+  }
+
+  return resultado.filter(
+    (actividad) => actividad && actividad.eliminado !== true
+  );
+}
+
+/* ============================================================
+   RF24 - CONSULTAR DETALLE COMPLETO
+   ============================================================ */
+
+export async function obtenerDetalleActividad(actividadId) {
+  const resultado = await obtenerDetalleActividadServicio(actividadId);
+
+  if (!resultado) {
+    throw new Error('No se encontró la actividad solicitada.');
+  }
+
+  return resultado;
+}
+
 /**
- * RF25: cambiar el estado desde el detalle de una actividad.
+ * Nombre utilizado por la pantalla editarActividad.jsx.
  */
+export async function consultarActividadPorId(actividadId) {
+  return obtenerDetalleActividad(actividadId);
+}
+
+export async function consultarDetalleActividad(actividadId) {
+  return obtenerDetalleActividad(actividadId);
+}
+
+/* ============================================================
+   RF25 - CAMBIAR ESTADO
+   ============================================================ */
+
 export async function cambiarEstadoActividad(
   actividadId,
   nuevoEstado,
@@ -57,4 +102,45 @@ export async function cambiarEstadoActividad(
     nuevoEstado,
     motivoNoRealizada
   );
+}
+
+export async function reactivarActividad(actividadId) {
+  return reactivarActividadServicio(actividadId);
+}
+
+/* ============================================================
+   RF32 - EDITAR ACTIVIDAD
+   ============================================================ */
+
+export async function editarActividad(
+  actividadId,
+  datosActualizacion
+) {
+  return editarActividadServicio(
+    actividadId,
+    datosActualizacion
+  );
+}
+
+/* ============================================================
+   ELIMINACIÓN LÓGICA
+   ============================================================ */
+
+export async function eliminarActividad(actividadId) {
+  return eliminarActividadServicio(actividadId);
+}
+/* ============================================================
+   RF26 — VERIFICAR ATENCIÓN LISTA PARA FINALIZAR
+   ============================================================ */
+
+export async function verificarAtencionListaParaFinalizar(atencionId) {
+  return verificarAtencionListaParaFinalizarServicio(atencionId);
+}
+
+/* ============================================================
+   RF25 — FINALIZAR ATENCIÓN
+   ============================================================ */
+
+export async function finalizarAtencion(atencionId) {
+  return finalizarAtencionServicio(atencionId);
 }

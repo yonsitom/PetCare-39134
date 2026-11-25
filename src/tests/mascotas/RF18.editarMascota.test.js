@@ -4,7 +4,7 @@ import {
   obtenerMensajeErrorEdicionMascota,
 } from '../../utils/validacionesEdicionMascota';
 
-import { actualizarMascota } from '../../dao/mascotaDAO';
+import { actualizarMascota } from '../../dao/mascotas/mascotaDAO';
 import { supabase } from '../../services/supabase';
 
 jest.mock('../../services/supabase', () => ({

@@ -7,7 +7,7 @@ jest.mock('../../services/supabase', () => ({
 }));
 
 import { supabase } from '../../services/supabase';
-import { consultarEstadoAtencion } from '../../dao/atencionesDAO';
+import { consultarEstadoAtencion } from '../../dao/atencion/atencionesDAO';
 
 const consultarUnaAtencion = jest.fn();
 const filtrarPorId = jest.fn();

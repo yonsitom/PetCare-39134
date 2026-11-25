@@ -22,11 +22,11 @@
 import {
   programarCita,
   cancelarCita,
-} from '../../services/citasServicio';
+} from '../../services/servicios/citasServicio';
 
-import * as citasDAO from '../../dao/citasDAO';
+import * as citasDAO from '../../dao/dietaCita/citasDAO';
 
-jest.mock('../../dao/citasDAO', () => ({
+jest.mock('../../dao/dietaCita/citasDAO', () => ({
   buscarMascotaPorHistoria: jest.fn(),
   buscarCitaDuplicada: jest.fn(),
   insertarCita: jest.fn(),

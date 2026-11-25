@@ -16,7 +16,7 @@
 
 import {
   crearActualizacionTiempoRealService,
-} from '../../services/seguimientoServicio';
+} from '../../services/atencion/seguimientoServicio';
 
 describe('RF43 - Actualizar en tiempo real el seguimiento de una atención', () => {
   let repositorio;
@@ -139,9 +139,9 @@ describe('RF43 - Actualizar en tiempo real el seguimiento de una atención', () 
       actividadesIniciales
     );
 
-    expect(resultado.mensaje).toBe(
-      'No recibe correctamente la actualización realizada'
-    );
+ expect(resultado.mensaje).toBe(
+  'No se pudo establecer correctamente la actualización en tiempo real.'
+);
 
     expect(resultado.actualizado).toBe(false);
   });

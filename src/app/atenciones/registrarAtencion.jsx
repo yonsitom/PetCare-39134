@@ -14,10 +14,9 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { supabase } from '../../services/supabase';
-import { registrarActividadServicio } from '../../services/actividadesServicio';
+import { registrarActividadServicio } from '../../services/atencion/actividadesServicio';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
-import { logger } from '../../utils/logger';
 
 const C = {
   fondo: '#F4F8F7',
@@ -236,7 +235,7 @@ export default function RegistrarActividadScreen() {
           setTipos(disponibles);
         }
       } catch (error) {
-        logger.error('Error cargando tipos de actividad:', error);
+        console.error('Error cargando tipos de actividad:', error);
 
         if (activo) {
           Alert.alert(
@@ -372,7 +371,7 @@ export default function RegistrarActividadScreen() {
             text: 'Aceptar',
             onPress: () => {
               router.replace({
-                pathname: '/detalleAtencion',
+                pathname: '/atenciones/detalleAtencion',
                 params: {
                   atencion_id: atencionId,
                 },
@@ -383,7 +382,7 @@ export default function RegistrarActividadScreen() {
         { cancelable: false }
       );
     } catch (error) {
-      logger.error('Error registrando actividad:', error);
+      console.error('Error registrando actividad:', error);
 
       Alert.alert(
         'No se pudo registrar',
@@ -404,9 +403,9 @@ export default function RegistrarActividadScreen() {
       }
 
       setMenuAbierto(false);
-      router.replace('/login');
+      router.replace('/');
     } catch (error) {
-      logger.error('Error cerrando sesión:', error);
+      console.error('Error cerrando sesión:', error);
 
       Alert.alert(
         'Error',
@@ -435,7 +434,7 @@ export default function RegistrarActividadScreen() {
       >
         <Text
           style={s.migas}
-          onPress={() => router.replace('/atenciones')}
+          onPress={() => router.replace('/atenciones/atenciones')}
         >
           Atenciones / Registrar actividad
         </Text>
@@ -619,7 +618,7 @@ export default function RegistrarActividadScreen() {
             onPress={() =>
               atencionId
                 ? router.replace({
-                    pathname: '/detalleAtencion',
+                    pathname: '/atenciones/detalleAtencion',
                     params: { atencion_id: atencionId },
                   })
                 : router.back()

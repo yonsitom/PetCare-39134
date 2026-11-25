@@ -20,7 +20,7 @@ import { supabase } from '../../services/supabase';
 import {
   buscarMascotasParaHistorial,
   consultarHistorialAtencionesPorMascota,
-} from '../../dao/atencionesDAO';
+} from '../../dao/atencion/atencionesDAO';
 
 /**
  * Simula la cadena de consultas de Supabase.

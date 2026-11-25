@@ -1,79 +1,88 @@
+
 import {
     obtenerHistorialCambios,
     obtenerDetalleHistorial,
-    obtenerTotalHistorial,
+    obtenerTotalHistorial
 } from "../../services/historial/historialCambiosServicio";
-import { logger } from '../../utils/logger';
 
 /**
- * Controlador para cargar el historial de cambios.
+ * PETCARE - CONTROLADOR DE HISTORIAL DE CAMBIOS
+ * RF42: Consultar historial de cambios.
+ *
+ * Arquitectura:
+ * Vista -> Controlador -> Servicio -> DAO -> Supabase.
  */
+
 export async function cargarHistorialCambios(filtros = {}) {
     try {
         const resultado = await obtenerHistorialCambios(filtros);
 
         return {
             correcto: true,
-            datos: resultado.registros,
-            total: resultado.total,
-            pagina: resultado.pagina,
-            limite: resultado.limite,
-            mensaje: "Historial consultado correctamente.",
+            datos: resultado.registros || [],
+            total: resultado.total || 0,
+            pagina: resultado.pagina || 1,
+            limite: resultado.limite || 20,
+            mensaje: "Historial consultado correctamente."
         };
     } catch (error) {
-        logger.error("Error en cargarHistorialCambios:", error);
+        console.error("Error en cargarHistorialCambios:", error);
 
         return {
             correcto: false,
             datos: [],
             total: 0,
-            mensaje: error.message || "No se pudo cargar el historial.",
+            pagina: 1,
+            limite: 20,
+            mensaje: error.message || "No fue posible consultar el historial."
         };
     }
 }
 
-/**
- * Controlador para consultar el detalle de un cambio.
- */
 export async function cargarDetalleHistorial(historialCambioId) {
     try {
-        const registro = await obtenerDetalleHistorial(historialCambioId);
+        const resultado = await obtenerDetalleHistorial(historialCambioId);
+
+        if (!resultado) {
+            return {
+                correcto: false,
+                datos: null,
+                mensaje: "No se encontró el registro del historial."
+            };
+        }
 
         return {
             correcto: true,
-            datos: registro,
-            mensaje: "Detalle consultado correctamente.",
+            datos: resultado,
+            mensaje: "Detalle consultado correctamente."
         };
     } catch (error) {
-        logger.error("Error en cargarDetalleHistorial:", error);
+        console.error("Error en cargarDetalleHistorial:", error);
 
         return {
             correcto: false,
             datos: null,
-            mensaje: error.message || "No se pudo consultar el detalle.",
+            mensaje: error.message || "No fue posible consultar el detalle."
         };
     }
 }
 
-/**
- * Controlador para contar los registros.
- */
 export async function cargarTotalHistorial(filtros = {}) {
     try {
         const total = await obtenerTotalHistorial(filtros);
 
         return {
             correcto: true,
-            total,
-            mensaje: "Total consultado correctamente.",
+            total: total || 0,
+            mensaje: "Total consultado correctamente."
         };
     } catch (error) {
-        logger.error("Error en cargarTotalHistorial:", error);
+        console.error("Error en cargarTotalHistorial:", error);
 
         return {
             correcto: false,
             total: 0,
-            mensaje: error.message || "No se pudo obtener el total.",
+            mensaje: error.message || "No fue posible contar los registros."
         };
     }
 }

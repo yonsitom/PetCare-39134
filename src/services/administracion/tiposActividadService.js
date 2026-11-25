@@ -32,7 +32,6 @@ import {
   actualizarTipoActividadDAO,
   cambiarEstadoTipoActividadDAO,
 } from '../../dao/administracion/tiposActividadDAO';
-import { logger } from '../../utils/logger';
 
 // ============================================================
 // MENSAJES DEL CUS56
@@ -156,7 +155,7 @@ export async function consultarTiposActividadServicio({
       soloActivos,
     });
   } catch (error) {
-    logger.error('RF56: error consultando el catálogo:', error);
+    console.error('RF56: error consultando el catálogo:', error);
     throw new Error(MENSAJE_ERROR);
   }
 }
@@ -181,7 +180,7 @@ export async function obtenerTipoActividadServicio(tipoId) {
   try {
     return await obtenerTipoActividadPorIdDAO(id);
   } catch (error) {
-    logger.error('RF56: error consultando tipo:', error);
+    console.error('RF56: error consultando tipo:', error);
     throw new Error(MENSAJE_ERROR);
   }
 }
@@ -233,7 +232,7 @@ export async function crearTipoActividadServicio(
       throw error;
     }
 
-    logger.error('RF56: error registrando tipo:', error);
+    console.error('RF56: error registrando tipo:', error);
     throw new Error(MENSAJE_ERROR);
   }
 }
@@ -283,7 +282,7 @@ export async function editarTipoActividadServicio(
       throw error;
     }
 
-    logger.error('RF56: error editando tipo:', error);
+    console.error('RF56: error editando tipo:', error);
     throw new Error(MENSAJE_ERROR);
   }
 }
@@ -326,7 +325,7 @@ export async function cambiarDisponibilidadTipoActividadServicio(
       data: resultado,
     };
   } catch (error) {
-    logger.error(
+    console.error(
       'RF56: error cambiando disponibilidad:',
       error
     );

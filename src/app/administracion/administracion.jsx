@@ -1,4 +1,3 @@
-
 import React, { useCallback, useState } from 'react';
 import {
   Alert,
@@ -15,7 +14,6 @@ import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 import TarjetaGestion from '../../components/administracion/TarjetaGestion';
 import { administracionStyles as styles } from '../../styles/administracionStyles';
-import { logger } from '../../utils/logger';
 
 const INDICADORES_VACIOS = {
   total: 0,
@@ -45,7 +43,7 @@ export default function AdministracionScreen() {
       .select(columnaEstado);
 
     if (error) {
-      logger.error(`Error al consultar ${tabla}:`, error.message);
+      console.error(`Error al consultar ${tabla}:`, error.message);
       throw error;
     }
 
@@ -96,7 +94,7 @@ export default function AdministracionScreen() {
             : anteriores.medicamentos,
       }));
     } catch (error) {
-      logger.error('Error al cargar los indicadores:', error);
+      console.error('Error al cargar los indicadores:', error);
     } finally {
       setCargandoIndicadores(false);
     }
@@ -156,7 +154,7 @@ export default function AdministracionScreen() {
 
       await cargarIndicadores();
     } catch (error) {
-      logger.error('Error al validar el perfil:', error);
+      console.error('Error al validar el perfil:', error);
       router.replace('/');
     }
   }, [cargarIndicadores]);
@@ -183,7 +181,7 @@ export default function AdministracionScreen() {
       router.replace('/');
     } catch (error) {
       Alert.alert('Error', 'No se pudo cerrar la sesión.');
-      logger.error('Error al cerrar sesión:', error);
+      console.error('Error al cerrar sesión:', error);
     }
   };
 
@@ -252,7 +250,9 @@ export default function AdministracionScreen() {
               indicadores={crearIndicadores(totales.usuarios)}
               cargando={cargandoIndicadores}
               textoBoton="Gestionar usuarios"
-              onPress={() => router.push('/usuarios')}
+              onPress={() =>
+                router.push('/administracion/gestionUsuario')
+              }
             />
 
             <TarjetaGestion
@@ -277,15 +277,15 @@ export default function AdministracionScreen() {
               }
             />
 
-<TarjetaGestion
-  icono="💊"
-  titulo="Medicamentos"
-  descripcion="Consulta y administra el catálogo de medicamentos y vacunas."
-  indicadores={crearIndicadores(totales.medicamentos)}
-  cargando={cargandoIndicadores}
-  textoBoton="Gestionar medicamentos"
-  onPress={() => router.push('/medicamentosAdmin/medicamentos')}
-/>
+            <TarjetaGestion
+              icono="💊"
+              titulo="Medicamentos"
+              descripcion="Consulta y administra el catálogo de medicamentos y vacunas."
+              indicadores={crearIndicadores(totales.medicamentos)}
+              cargando={cargandoIndicadores}
+              textoBoton="Gestionar medicamentos"
+              onPress={() => router.push('/medicamentosAdmin/medicamentos')}
+            />
           </View>
         </View>
 

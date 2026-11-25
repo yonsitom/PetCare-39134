@@ -1,5 +1,4 @@
-
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,12 +10,16 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+
 import { supabase } from '../../services/supabase';
+
 import {
   validarDatosRegistroMascota,
 } from '../../utils/validacionesRegistroMascota';
-import { logger } from '../../utils/logger';
+
+import {
+  validarDatosEdicionMascota,
+} from '../../utils/validacionesEdicionMascota';
 
 // ======================================================
 // COLORES PETCARE
@@ -35,13 +38,7 @@ const C = {
   placeholder: '#9AA8A4',
 };
 
-const OPCIONES_ESPECIE = [
-  'Perro',
-  'Gato',
-  'Ave',
-  'Conejo',
-  'Otro',
-];
+const OPCIONES_ESPECIE = ['Perro', 'Gato', 'Ave', 'Otro'];
 
 const OPCIONES_SEXO = [
   'Macho',
@@ -53,6 +50,23 @@ const OPCIONES_ESTERILIZACION = [
   'Esterilizado',
   'No esterilizado',
   'No aplica',
+];
+
+const DIAS_SEMANA = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
+
+const MESES = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
 ];
 
 // ======================================================
@@ -73,8 +87,6 @@ function obtenerNombrePropietario(propietario) {
   }`.trim();
 }
 
-// Convierte AAAA-MM-DD en una fecha local.
-// Si la fecha es inválida, retorna null para no ocultar errores.
 function fechaDesdeTexto(valor) {
   if (
     typeof valor !== 'string' ||
@@ -140,6 +152,35 @@ function obtenerEspeciePersonalizada(valor) {
   }
 
   return '';
+}
+
+function obtenerDiasDelMes(anio, mes) {
+  return new Date(anio, mes + 1, 0).getDate();
+}
+
+function obtenerPrimerDiaDelMes(anio, mes) {
+  return new Date(anio, mes, 1).getDay();
+}
+
+function esMismoDia(fechaA, fechaB) {
+  return (
+    fechaA.getFullYear() === fechaB.getFullYear() &&
+    fechaA.getMonth() === fechaB.getMonth() &&
+    fechaA.getDate() === fechaB.getDate()
+  );
+}
+
+function fechaEsFutura(fecha) {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  const fechaComparar = new Date(
+    fecha.getFullYear(),
+    fecha.getMonth(),
+    fecha.getDate()
+  );
+
+  return fechaComparar > hoy;
 }
 
 // ======================================================
@@ -219,8 +260,24 @@ export default function FormularioMascota({
   const [calendarioVisible, setCalendarioVisible] =
     useState(false);
 
-  const [fechaCalendario, setFechaCalendario] = useState(
-    fechaDesdeTexto(datosIniciales?.fecha_nacimiento) || new Date()
+  const [mesCalendario, setMesCalendario] = useState(() => {
+    const fechaInicial = fechaDesdeTexto(
+      datosIniciales?.fecha_nacimiento
+    );
+
+    return fechaInicial || new Date();
+  });
+
+  const [fechaTemporal, setFechaTemporal] = useState(
+    fechaDesdeTexto(datosIniciales?.fecha_nacimiento)
+  );
+
+  // Nueva vista para seleccionar directamente mes y año.
+  const [vistaSelectorFecha, setVistaSelectorFecha] =
+    useState(false);
+
+  const [anioTexto, setAnioTexto] = useState(
+    String(new Date().getFullYear())
   );
 
   const esEdicion = modo === 'edicion';
@@ -253,9 +310,12 @@ export default function FormularioMascota({
       textoSeguro(datosIniciales.fecha_nacimiento)
     );
 
-    setFechaCalendario(
-      fechaDesdeTexto(datosIniciales.fecha_nacimiento) || new Date()
+    const fechaInicial = fechaDesdeTexto(
+      datosIniciales.fecha_nacimiento
     );
+
+    setMesCalendario(fechaInicial || new Date());
+    setFechaTemporal(fechaInicial);
 
     setColor(textoSeguro(datosIniciales.color));
 
@@ -305,7 +365,7 @@ export default function FormularioMascota({
           setPropietarios(data || []);
         }
       } catch (error) {
-        logger.error(
+        console.error(
           'Error al cargar propietarios:',
           error
         );
@@ -330,6 +390,10 @@ export default function FormularioMascota({
     };
   }, []);
 
+  // ----------------------------------------------------
+  // PROPIETARIO SELECCIONADO Y FILTRADO
+  // ----------------------------------------------------
+
   const propietarioSeleccionado =
     propietarios.find(
       (propietario) =>
@@ -339,10 +403,10 @@ export default function FormularioMascota({
     datosIniciales?.propietarios ||
     null;
 
-  const propietariosFiltrados = propietarios.filter(
-    (propietario) => {
-      const termino = busquedaPropietario.trim().toLowerCase();
+  const propietariosFiltrados = useMemo(() => {
+    const termino = busquedaPropietario.trim().toLowerCase();
 
+    return propietarios.filter((propietario) => {
       const nombreCompleto =
         obtenerNombrePropietario(propietario).toLowerCase();
 
@@ -354,8 +418,8 @@ export default function FormularioMascota({
         nombreCompleto.includes(termino) ||
         documento.includes(termino)
       );
-    }
-  );
+    });
+  }, [propietarios, busquedaPropietario]);
 
   // ----------------------------------------------------
   // LIMPIEZA DE ERRORES
@@ -404,22 +468,15 @@ export default function FormularioMascota({
         'Especifica la especie de la mascota.';
     }
 
-    // Validación de fecha mediante el mismo criterio de RF17.
     if (fechaNacimiento) {
       const fechaValida = fechaDesdeTexto(fechaNacimiento);
 
       if (!fechaValida) {
         nuevosErrores.fecha_nacimiento =
           'Selecciona una fecha válida.';
-      } else {
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-        fechaValida.setHours(0, 0, 0, 0);
-
-        if (fechaValida > hoy) {
-          nuevosErrores.fecha_nacimiento =
-            'La fecha no puede ser futura.';
-        }
+      } else if (fechaEsFutura(fechaValida)) {
+        nuevosErrores.fecha_nacimiento =
+          'La fecha no puede ser futura.';
       }
     }
 
@@ -438,7 +495,7 @@ export default function FormularioMascota({
   }
 
   // ----------------------------------------------------
-  // PREPARAR Y VALIDAR LOS DATOS DE RF17
+  // PREPARAR Y VALIDAR LOS DATOS
   // ----------------------------------------------------
 
   async function manejarContinuar() {
@@ -463,10 +520,17 @@ export default function FormularioMascota({
       observaciones: observaciones.trim() || null,
     };
 
-    // La validación independiente también se utiliza en Jest.
-    const resultado = validarDatosRegistroMascota(
-      datosMascota
-    );
+    if (!formularioValido) {
+      setErrorGeneral(
+        'Verifique los campos señalados antes de continuar.'
+      );
+      return;
+    }
+
+    // RF17 valida el registro; RF18 valida la modificación.
+    const resultado = esEdicion
+      ? validarDatosEdicionMascota(datosMascota)
+      : validarDatosRegistroMascota(datosMascota);
 
     if (!resultado.valido) {
       setErrorGeneral(resultado.mensaje);
@@ -475,15 +539,12 @@ export default function FormularioMascota({
 
     setErrorGeneral('');
 
-    // No continuar si hay errores específicos del formulario.
-    if (!formularioValido) return;
-
     try {
       if (typeof onContinuar === 'function') {
         await onContinuar(datosMascota);
       }
     } catch (error) {
-      logger.error(
+      console.error(
         'Error al enviar los datos de la mascota:',
         error
       );
@@ -520,31 +581,150 @@ export default function FormularioMascota({
   }
 
   // ----------------------------------------------------
-  // CALENDARIO
+  // CALENDARIO PROPIO COMPATIBLE CON EXPO WEB
   // ----------------------------------------------------
 
   function abrirCalendario() {
-    setFechaCalendario(
-      fechaDesdeTexto(fechaNacimiento) || new Date()
-    );
+    const fechaActual =
+      fechaDesdeTexto(fechaNacimiento) || new Date();
 
+    setFechaTemporal(fechaActual);
+    setMesCalendario(fechaActual);
+    setAnioTexto(String(fechaActual.getFullYear()));
+    setVistaSelectorFecha(false);
     setCalendarioVisible(true);
   }
 
-  function seleccionarFecha(evento, fechaSeleccionada) {
-    if (evento?.type === 'dismissed') {
+  function cambiarMes(direccion) {
+    setMesCalendario((actual) => {
+      const nuevaFecha = new Date(
+        actual.getFullYear(),
+        actual.getMonth() + direccion,
+        1
+      );
+
+      const hoy = new Date();
+
+      if (
+        nuevaFecha.getFullYear() > hoy.getFullYear() ||
+        (
+          nuevaFecha.getFullYear() === hoy.getFullYear() &&
+          nuevaFecha.getMonth() > hoy.getMonth()
+        )
+      ) {
+        return actual;
+      }
+
+      return nuevaFecha;
+    });
+  }
+
+  function abrirSelectorMesAnio() {
+    setAnioTexto(String(mesCalendario.getFullYear()));
+    setVistaSelectorFecha(true);
+  }
+
+  function seleccionarMes(mes) {
+    const anio = Number(anioTexto);
+    const anioActual = new Date().getFullYear();
+
+    if (
+      !Number.isInteger(anio) ||
+      anio < 1900 ||
+      anio > anioActual
+    ) {
+      Alert.alert(
+        'Año no válido',
+        `Ingresa un año entre 1900 y ${anioActual}.`
+      );
+      return;
+    }
+
+    const hoy = new Date();
+
+    if (
+      anio === hoy.getFullYear() &&
+      mes > hoy.getMonth()
+    ) {
+      Alert.alert(
+        'Mes no válido',
+        'No puedes seleccionar un mes futuro.'
+      );
+      return;
+    }
+
+    setMesCalendario(new Date(anio, mes, 1));
+    setVistaSelectorFecha(false);
+  }
+
+  function seleccionarDia(dia) {
+    const anio = mesCalendario.getFullYear();
+    const mes = mesCalendario.getMonth();
+    const fechaSeleccionada = new Date(anio, mes, dia);
+
+    if (fechaEsFutura(fechaSeleccionada)) {
+      return;
+    }
+
+    setFechaTemporal(fechaSeleccionada);
+  }
+
+  function confirmarFecha() {
+    if (!fechaTemporal) {
       setCalendarioVisible(false);
       return;
     }
 
-    if (fechaSeleccionada) {
-      setFechaCalendario(fechaSeleccionada);
-      setFechaNacimiento(fechaAISO(fechaSeleccionada));
-      limpiarError('fecha_nacimiento');
+    if (fechaEsFutura(fechaTemporal)) {
+      setErrores((actuales) => ({
+        ...actuales,
+        fecha_nacimiento: 'La fecha no puede ser futura.',
+      }));
+      return;
     }
 
+    setFechaNacimiento(fechaAISO(fechaTemporal));
     setCalendarioVisible(false);
+    setVistaSelectorFecha(false);
+    limpiarError('fecha_nacimiento');
   }
+
+  function limpiarFecha() {
+    setFechaNacimiento('');
+    setFechaTemporal(null);
+    limpiarError('fecha_nacimiento');
+  }
+
+  const anioCalendario = mesCalendario.getFullYear();
+  const mesCalendarioNumero = mesCalendario.getMonth();
+
+  const cantidadDias = obtenerDiasDelMes(
+    anioCalendario,
+    mesCalendarioNumero
+  );
+
+  const primerDia = obtenerPrimerDiaDelMes(
+    anioCalendario,
+    mesCalendarioNumero
+  );
+
+  const diasCalendario = [
+    ...Array(primerDia).fill(null),
+    ...Array.from(
+      { length: cantidadDias },
+      (_, indice) => indice + 1
+    ),
+  ];
+
+  const anioActual = new Date().getFullYear();
+  const mesActual = new Date().getMonth();
+
+  const puedeAvanzarMes =
+    anioCalendario < anioActual ||
+    (
+      anioCalendario === anioActual &&
+      mesCalendarioNumero < mesActual
+    );
 
   // ----------------------------------------------------
   // COMPONENTES REUTILIZABLES DEL FORMULARIO
@@ -670,7 +850,6 @@ export default function FormularioMascota({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* MENSAJE GENERAL RF17 */}
         {!!errorGeneral && (
           <View
             style={styles.contenedorErrorGeneral}
@@ -831,10 +1010,7 @@ export default function FormularioMascota({
               {!!fechaNacimiento && (
                 <TouchableOpacity
                   style={styles.botonLimpiarFecha}
-                  onPress={() => {
-                    setFechaNacimiento('');
-                    limpiarError('fecha_nacimiento');
-                  }}
+                  onPress={limpiarFecha}
                   disabled={cargando}
                   accessibilityLabel="Limpiar fecha"
                 >
@@ -925,16 +1101,261 @@ export default function FormularioMascota({
         <View style={styles.espacioFinal} />
       </ScrollView>
 
-      {/* CALENDARIO */}
-      {calendarioVisible && (
-        <DateTimePicker
-          value={fechaCalendario}
-          mode="date"
-          display="default"
-          maximumDate={new Date()}
-          onChange={seleccionarFecha}
-        />
-      )}
+      {/* MODAL CALENDARIO */}
+      <Modal
+        visible={calendarioVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setCalendarioVisible(false);
+          setVistaSelectorFecha(false);
+        }}
+      >
+        <View style={styles.fondoModalCalendario}>
+          <View style={styles.tarjetaCalendario}>
+            <View style={styles.encabezadoCalendario}>
+              <Text style={styles.tituloCalendario}>
+                Fecha de nacimiento
+              </Text>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setCalendarioVisible(false);
+                  setVistaSelectorFecha(false);
+                }}
+                style={styles.cerrarCalendario}
+              >
+                <Text style={styles.textoCerrarCalendario}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            {vistaSelectorFecha ? (
+              <>
+                {/* SELECTOR DIRECTO DE AÑO */}
+                <View style={styles.contenedorSelectorAnio}>
+                  <Text style={styles.etiquetaSelectorAnio}>
+                    Escribe el año
+                  </Text>
+
+                  <TextInput
+                    style={styles.inputAnio}
+                    value={anioTexto}
+                    onChangeText={(texto) => {
+                      setAnioTexto(
+                        texto.replace(/[^0-9]/g, '').slice(0, 4)
+                      );
+                    }}
+                    keyboardType="numeric"
+                    maxLength={4}
+                    placeholder="Ej. 2018"
+                    placeholderTextColor={C.placeholder}
+                    selectTextOnFocus
+                  />
+                </View>
+
+                <Text style={styles.etiquetaSelectorMes}>
+                  Selecciona el mes
+                </Text>
+
+                <View style={styles.grillaMeses}>
+                  {MESES.map((mes, indice) => {
+                    const anio = Number(anioTexto);
+                    const anioValido =
+                      Number.isInteger(anio) &&
+                      anio >= 1900 &&
+                      anio <= anioActual;
+
+                    const mesFuturo =
+                      anioValido &&
+                      anio === anioActual &&
+                      indice > mesActual;
+
+                    const seleccionado =
+                      anio === anioCalendario &&
+                      indice === mesCalendarioNumero;
+
+                    return (
+                      <TouchableOpacity
+                        key={mes}
+                        style={[
+                          styles.botonSeleccionMes,
+                          seleccionado &&
+                            styles.botonSeleccionMesActivo,
+                          mesFuturo &&
+                            styles.botonSeleccionMesDeshabilitado,
+                        ]}
+                        onPress={() => seleccionarMes(indice)}
+                        disabled={!anioValido || mesFuturo}
+                        activeOpacity={0.75}
+                      >
+                        <Text
+                          style={[
+                            styles.textoSeleccionMes,
+                            seleccionado &&
+                              styles.textoSeleccionMesActivo,
+                            mesFuturo &&
+                              styles.textoSeleccionMesDeshabilitado,
+                          ]}
+                        >
+                          {mes.substring(0, 3)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <TouchableOpacity
+                  style={styles.botonVolverDias}
+                  onPress={() => setVistaSelectorFecha(false)}
+                >
+                  <Text style={styles.textoVolverDias}>
+                    Volver al calendario
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <View style={styles.navegacionCalendario}>
+                  <TouchableOpacity
+                    style={styles.botonMes}
+                    onPress={() => cambiarMes(-1)}
+                  >
+                    <Text style={styles.textoBotonMes}>‹</Text>
+                  </TouchableOpacity>
+
+                  {/* Al pulsar el encabezado se abre el selector */}
+                  <TouchableOpacity
+                    style={styles.botonMesAnio}
+                    onPress={abrirSelectorMesAnio}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.mesAnio}>
+                      {MESES[mesCalendarioNumero]} {anioCalendario}
+                    </Text>
+                    <Text style={styles.indicadorSelector}>
+                      ▾
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.botonMes,
+                      !puedeAvanzarMes &&
+                        styles.botonMesDeshabilitado,
+                    ]}
+                    onPress={() => cambiarMes(1)}
+                    disabled={!puedeAvanzarMes}
+                  >
+                    <Text
+                      style={[
+                        styles.textoBotonMes,
+                        !puedeAvanzarMes &&
+                          styles.textoMesDeshabilitado,
+                      ]}
+                    >
+                      ›
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.ayudaSelectorFecha}>
+                  Pulsa el mes y año para cambiar directamente.
+                </Text>
+
+                <View style={styles.grillaCalendario}>
+                  {DIAS_SEMANA.map((dia, indice) => (
+                    <View
+                      key={`dia-${indice}`}
+                      style={styles.celdaDiaSemana}
+                    >
+                      <Text style={styles.textoDiaSemana}>
+                        {dia}
+                      </Text>
+                    </View>
+                  ))}
+
+                  {diasCalendario.map((dia, indice) => {
+                    if (dia === null) {
+                      return (
+                        <View
+                          key={`vacio-${indice}`}
+                          style={styles.celdaCalendario}
+                        />
+                      );
+                    }
+
+                    const fechaDia = new Date(
+                      anioCalendario,
+                      mesCalendarioNumero,
+                      dia
+                    );
+
+                    const seleccionado =
+                      fechaTemporal &&
+                      esMismoDia(fechaTemporal, fechaDia);
+
+                    const futuro = fechaEsFutura(fechaDia);
+
+                    return (
+                      <TouchableOpacity
+                        key={`fecha-${dia}`}
+                        style={[
+                          styles.celdaCalendario,
+                          seleccionado && styles.diaSeleccionado,
+                        ]}
+                        onPress={() => seleccionarDia(dia)}
+                        disabled={futuro}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.textoDiaCalendario,
+                            seleccionado &&
+                              styles.textoDiaSeleccionado,
+                            futuro && styles.textoDiaFuturo,
+                          ]}
+                        >
+                          {dia}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.notaCalendario}>
+                  No puedes seleccionar una fecha futura.
+                </Text>
+              </>
+            )}
+
+            <View style={styles.accionesCalendario}>
+              <TouchableOpacity
+                style={styles.botonCancelarCalendario}
+                onPress={() => {
+                  setCalendarioVisible(false);
+                  setVistaSelectorFecha(false);
+                }}
+              >
+                <Text style={styles.textoCancelarCalendario}>
+                  Cancelar
+                </Text>
+              </TouchableOpacity>
+
+              {!vistaSelectorFecha && (
+                <TouchableOpacity
+                  style={styles.botonAceptarCalendario}
+                  onPress={confirmarFecha}
+                  disabled={!fechaTemporal}
+                >
+                  <Text style={styles.textoAceptarCalendario}>
+                    Aceptar
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* MODAL DE PROPIETARIOS */}
       <Modal
@@ -1006,7 +1427,9 @@ export default function FormularioMascota({
                         seleccionado &&
                           styles.itemPropietarioSeleccionado,
                       ]}
-                      onPress={() => seleccionarPropietario(propietario)}
+                      onPress={() =>
+                        seleccionarPropietario(propietario)
+                      }
                       activeOpacity={0.75}
                     >
                       <View style={styles.avatarPropietario}>
@@ -1316,6 +1739,254 @@ const styles = StyleSheet.create({
   espacioFinal: {
     height: 14,
   },
+
+  // Calendario
+  fondoModalCalendario: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.48)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 18,
+  },
+  tarjetaCalendario: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: C.fondo,
+    borderRadius: 17,
+    padding: 18,
+  },
+  encabezadoCalendario: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  tituloCalendario: {
+    color: C.texto,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  cerrarCalendario: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    backgroundColor: C.grisClaro,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textoCerrarCalendario: {
+    color: C.texto,
+    fontSize: 24,
+    lineHeight: 27,
+  },
+  navegacionCalendario: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  botonMes: {
+    width: 38,
+    height: 36,
+    borderRadius: 9,
+    backgroundColor: C.verdeClaro,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  botonMesDeshabilitado: {
+    backgroundColor: C.grisClaro,
+  },
+  textoBotonMes: {
+    color: C.primario,
+    fontSize: 27,
+    lineHeight: 30,
+    fontWeight: '700',
+  },
+  textoMesDeshabilitado: {
+    color: '#B7C3BF',
+  },
+  botonMesAnio: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 9,
+    backgroundColor: C.grisClaro,
+  },
+  mesAnio: {
+    color: C.texto,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  indicadorSelector: {
+    color: C.primario,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  ayudaSelectorFecha: {
+    color: C.secundario,
+    fontSize: 10,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  grillaCalendario: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  celdaDiaSemana: {
+    width: '14.2857%',
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textoDiaSemana: {
+    color: C.secundario,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  celdaCalendario: {
+    width: '14.2857%',
+    height: 39,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+  },
+  diaSeleccionado: {
+    backgroundColor: C.primario,
+  },
+  textoDiaCalendario: {
+    color: C.texto,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  textoDiaSeleccionado: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  textoDiaFuturo: {
+    color: '#C8D0CD',
+  },
+  notaCalendario: {
+    color: C.secundario,
+    fontSize: 11,
+    marginTop: 10,
+    textAlign: 'center',
+  },
+
+  // Selector directo de mes y año
+  contenedorSelectorAnio: {
+    marginBottom: 14,
+  },
+  etiquetaSelectorAnio: {
+    color: C.texto,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  inputAnio: {
+    height: 43,
+    borderWidth: 1,
+    borderColor: C.borde,
+    borderRadius: 9,
+    backgroundColor: C.grisClaro,
+    color: C.texto,
+    fontSize: 17,
+    fontWeight: '800',
+    textAlign: 'center',
+    paddingHorizontal: 12,
+  },
+  etiquetaSelectorMes: {
+    color: C.texto,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 9,
+  },
+  grillaMeses: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 9,
+  },
+  botonSeleccionMes: {
+    width: '23%',
+    minHeight: 42,
+    borderWidth: 1,
+    borderColor: C.borde,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.fondo,
+  },
+  botonSeleccionMesActivo: {
+    backgroundColor: C.verdeClaro,
+    borderColor: C.primario,
+  },
+  botonSeleccionMesDeshabilitado: {
+    backgroundColor: C.grisClaro,
+    borderColor: C.grisClaro,
+  },
+  textoSeleccionMes: {
+    color: C.texto,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  textoSeleccionMesActivo: {
+    color: C.primarioOscuro,
+    fontWeight: '800',
+  },
+  textoSeleccionMesDeshabilitado: {
+    color: '#B7C3BF',
+  },
+  botonVolverDias: {
+    marginTop: 13,
+    minHeight: 39,
+    borderRadius: 9,
+    backgroundColor: C.verdeClaro,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textoVolverDias: {
+    color: C.primarioOscuro,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  accionesCalendario: {
+    flexDirection: 'row',
+    gap: 9,
+    marginTop: 17,
+  },
+  botonCancelarCalendario: {
+    flex: 1,
+    minHeight: 42,
+    borderWidth: 1,
+    borderColor: C.borde,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textoCancelarCalendario: {
+    color: C.texto,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  botonAceptarCalendario: {
+    flex: 1,
+    minHeight: 42,
+    backgroundColor: C.primario,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textoAceptarCalendario: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  // Modal propietarios
   fondoModal: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.42)',

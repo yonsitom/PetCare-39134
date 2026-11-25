@@ -26,7 +26,7 @@ jest.mock('../../services/supabase', () => {
 });
 
 import { validarDatosPropietario } from '../../utils/validacionesPropietario';
-import { registrarPropietario } from '../../dao/propietarioDAO';
+import { registrarPropietario } from '../../dao/propietario/propietarioDAO';
 import {
   __mockBuilder,
   __mockMaybeSingle,

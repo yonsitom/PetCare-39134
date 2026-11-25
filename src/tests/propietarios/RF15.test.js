@@ -14,7 +14,7 @@ import EditarPropietario from '../../app/propietarios/editarPropietario';
 import {
   consultarPropietarioPorId,
   actualizarPropietario,
-} from '../../dao/propietarioDAO';
+} from '../../dao/propietario/propietarioDAO';
 
 jest.mock('expo-router', () => ({
   router: {
@@ -42,7 +42,7 @@ jest.mock('../../components/layout/MenuLateralDerecho', () => {
   };
 });
 
-jest.mock('../../dao/propietarioDAO', () => ({
+jest.mock('../../dao/propietario/propietarioDAO', () => ({
   consultarPropietarioPorId: jest.fn(),
   actualizarPropietario: jest.fn(),
 }));

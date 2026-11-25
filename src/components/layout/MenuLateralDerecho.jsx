@@ -1,5 +1,4 @@
 
-
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -17,7 +16,7 @@ import {
 } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { supabase } from '../../services/supabase';
-import { cerrarSesionServicio } from '../../services/cerrarSesionServicio';
+import { cerrarSesionServicio } from '../../services/persistencia/cerrarSesionServicio';
 
 const ANCHO_PANTALLA = Dimensions.get('window').width;
 const ANCHO_MENU = ANCHO_PANTALLA * 0.689;
@@ -84,17 +83,25 @@ export default function MenuLateralDerecho({
   onCerrarSesion,
 }) {
   const pathname = usePathname();
-  const desplazamiento = useRef(new Animated.Value(ANCHO_MENU)).current;
-  const opacidadFondo = useRef(new Animated.Value(0)).current;
 
-  const [rolVerificado, setRolVerificado] = useState('');
-  const [verificandoRol, setVerificandoRol] = useState(false);
+  const desplazamiento = useRef(
+    new Animated.Value(ANCHO_MENU)
+  ).current;
 
-  // Estado independiente para la confirmación de cierre de sesión.
+  const opacidadFondo = useRef(
+    new Animated.Value(0)
+  ).current;
+
+const [nombreVerificado, setNombreVerificado] = useState('');
+const [rolVerificado, setRolVerificado] = useState('');
+const [verificandoRol, setVerificandoRol] = useState(false);
+
   const [modalCerrarSesion, setModalCerrarSesion] = useState(false);
   const [cerrandoSesion, setCerrandoSesion] = useState(false);
 
+  // El rol consultado directamente en Supabase tiene prioridad.
   const rolActual = rolVerificado || rolUsuario || '';
+
   const esAdministrador =
     normalizarRol(rolActual) === 'administrador';
 
@@ -103,8 +110,54 @@ export default function MenuLateralDerecho({
       !opcion.soloAdministrador || esAdministrador
   );
 
+  /**
+   * Consulta el usuario autenticado y su perfil real.
+   * La información del perfil en Supabase tiene prioridad
+   * sobre el rol enviado por la pantalla.
+   */
+  async function consultarPerfilActual() {
+  const {
+    data: { user },
+    error: errorUsuario,
+  } = await supabase.auth.getUser();
+
+  if (errorUsuario || !user) {
+    throw new Error('No se encontró una sesión activa.');
+  }
+
+  const { data: perfil, error } = await supabase
+    .from('perfiles')
+    .select('nombre_completo, rol, estado_cuenta')
+    .eq('perfil_id', user.id)
+    .maybeSingle();
+
+  if (error || !perfil) {
+    throw new Error(
+      'No se pudo consultar el perfil del usuario.'
+    );
+  }
+
+  if (
+    normalizarRol(perfil.estado_cuenta) !== 'activo'
+  ) {
+    throw new Error('Tu cuenta no se encuentra activa.');
+  }
+
+  setNombreVerificado(perfil.nombre_completo || '');
+  setRolVerificado(perfil.rol || '');
+
+  return perfil;
+}
+  /**
+   * Al abrir el menú:
+   * 1. Ejecuta la animación.
+   * 2. Consulta el rol directamente en Supabase.
+   * 3. Actualiza las opciones visibles según el rol real.
+   */
   useEffect(() => {
     if (!visible) return;
+
+    let componenteActivo = true;
 
     desplazamiento.setValue(ANCHO_MENU);
     opacidadFondo.setValue(0);
@@ -122,7 +175,36 @@ export default function MenuLateralDerecho({
       }),
     ]).start();
 
-    if (rolUsuario) setRolVerificado(rolUsuario);
+    async function verificarRolAlAbrir() {
+      setVerificandoRol(true);
+      setRolVerificado('');
+
+      try {
+        const perfil = await consultarPerfilActual();
+
+        if (componenteActivo) {
+          setRolVerificado(perfil.rol || '');
+        }
+      } catch (error) {
+        if (componenteActivo) {
+          setRolVerificado('');
+          console.error(
+            'Error al verificar el rol del menú:',
+            error.message
+          );
+        }
+      } finally {
+        if (componenteActivo) {
+          setVerificandoRol(false);
+        }
+      }
+    }
+
+    verificarRolAlAbrir();
+
+    return () => {
+      componenteActivo = false;
+    };
   }, [visible, desplazamiento, opacidadFondo, rolUsuario]);
 
   function cerrarMenu() {
@@ -138,47 +220,28 @@ export default function MenuLateralDerecho({
         useNativeDriver: true,
       }),
     ]).start(({ finished }) => {
-      if (finished) onCerrar?.();
+      if (finished) {
+        onCerrar?.();
+      }
     });
   }
 
-  async function consultarPerfilActual() {
-    const {
-      data: { user },
-      error: errorUsuario,
-    } = await supabase.auth.getUser();
-
-    if (errorUsuario || !user) {
-      throw new Error('No se encontró una sesión activa.');
-    }
-
-    const { data: perfil, error } = await supabase
-      .from('perfiles')
-      .select('rol, estado_cuenta')
-      .eq('perfil_id', user.id)
-      .maybeSingle();
-
-    if (error || !perfil) {
-      throw new Error('No se pudo consultar el perfil del usuario.');
-    }
-
-    if (normalizarRol(perfil.estado_cuenta) !== 'activo') {
-      throw new Error('Tu cuenta no se encuentra activa.');
-    }
-
-    setRolVerificado(perfil.rol || '');
-    return perfil;
-  }
-
+  /**
+   * Verifica nuevamente los permisos antes de navegar
+   * a Administración.
+   */
   async function navegarA(opcion) {
     if (verificandoRol) return;
 
     try {
       if (opcion.soloAdministrador) {
         setVerificandoRol(true);
+
         const perfil = await consultarPerfilActual();
 
-        if (normalizarRol(perfil.rol) !== 'administrador') {
+        if (
+          normalizarRol(perfil.rol) !== 'administrador'
+        ) {
           Alert.alert(
             'Acceso restringido',
             'Solo el administrador puede acceder a esta sección.'
@@ -199,7 +262,8 @@ export default function MenuLateralDerecho({
     } catch (error) {
       Alert.alert(
         'No se pudo acceder',
-        error.message || 'Ocurrió un problema al verificar los permisos.'
+        error.message ||
+          'Ocurrió un problema al verificar los permisos.'
       );
     } finally {
       setVerificandoRol(false);
@@ -222,26 +286,29 @@ export default function MenuLateralDerecho({
 
   function abrirPerfil() {
     cerrarMenu();
-    setTimeout(() => router.push('/perfil'), 230);
+
+    setTimeout(() => {
+      router.push('/perfil/perfil');
+    }, 230);
   }
 
   /**
    * RF07: abrir la confirmación personalizada.
-   * No se cierra sesión hasta que el usuario confirme.
    */
   function confirmarCerrarSesion() {
     if (cerrandoSesion || modalCerrarSesion) return;
+
     setModalCerrarSesion(true);
   }
 
   function cancelarCerrarSesion() {
     if (cerrandoSesion) return;
+
     setModalCerrarSesion(false);
   }
 
   /**
    * RF07: ejecutar el cierre una sola vez.
-   * La pantalla receptora no debe mostrar otra confirmación.
    */
   async function ejecutarCerrarSesion() {
     if (cerrandoSesion) return;
@@ -250,8 +317,6 @@ export default function MenuLateralDerecho({
 
     try {
       if (onCerrarSesion) {
-        // Las pantallas que reciben esta función cierran sesión
-        // directamente, sin volver a solicitar confirmación.
         await onCerrarSesion();
       } else {
         await cerrarSesionServicio(supabase);
@@ -265,7 +330,8 @@ export default function MenuLateralDerecho({
 
       Alert.alert(
         'No se pudo cerrar la sesión',
-        error?.message || 'Ocurrió un error. Inténtalo nuevamente.'
+        error?.message ||
+          'Ocurrió un error. Inténtalo nuevamente.'
       );
     } finally {
       setCerrandoSesion(false);
@@ -284,10 +350,16 @@ export default function MenuLateralDerecho({
         onRequestClose={cerrarMenu}
       >
         <View style={estilos.contenedorModal}>
-          <StatusBar backgroundColor="#103F3B" barStyle="light-content" />
+          <StatusBar
+            backgroundColor="#103F3B"
+            barStyle="light-content"
+          />
 
           <Animated.View
-            style={[estilos.fondoOscuro, { opacity: opacidadFondo }]}
+            style={[
+              estilos.fondoOscuro,
+              { opacity: opacidadFondo },
+            ]}
           >
             <Pressable
               style={StyleSheet.absoluteFill}
@@ -300,7 +372,9 @@ export default function MenuLateralDerecho({
               estilos.menu,
               {
                 width: ANCHO_MENU,
-                transform: [{ translateX: desplazamiento }],
+                transform: [
+                  { translateX: desplazamiento },
+                ],
               },
             ]}
           >
@@ -311,8 +385,12 @@ export default function MenuLateralDerecho({
                 </View>
 
                 <View>
-                  <Text style={estilos.nombreMarca}>PetCare</Text>
-                  <Text style={estilos.subtituloMarca}>VETERINARIA</Text>
+                  <Text style={estilos.nombreMarca}>
+                    PetCare
+                  </Text>
+                  <Text style={estilos.subtituloMarca}>
+                    VETERINARIA
+                  </Text>
                 </View>
               </View>
 
@@ -335,24 +413,34 @@ export default function MenuLateralDerecho({
               <View style={estilos.tarjetaUsuario}>
                 <View style={estilos.avatar}>
                   <Text style={estilos.iniciales}>
-                    {obtenerIniciales(nombreUsuario)}
+                    {obtenerIniciales(nombreVerificado || nombreUsuario)}
                   </Text>
                 </View>
 
                 <View style={estilos.datosUsuario}>
-                  <Text style={estilos.nombreUsuario} numberOfLines={2}>
-                    {nombreUsuario || 'Usuario'}
+                  <Text
+                    style={estilos.nombreUsuario}
+                    numberOfLines={2}
+                  >
+                   {nombreVerificado || nombreUsuario || 'Usuario'}
                   </Text>
 
-                  <Text style={estilos.rolUsuario} numberOfLines={1}>
-                    {rolActual || 'Personal veterinario'}
+                  <Text
+                    style={estilos.rolUsuario}
+                    numberOfLines={1}
+                  >
+                    {verificandoRol
+                      ? 'Verificando rol...'
+                      : rolActual || 'Personal veterinario'}
                   </Text>
                 </View>
 
                 <View style={estilos.indicadorActivo} />
               </View>
 
-              <Text style={estilos.tituloSeccion}>MENÚ PRINCIPAL</Text>
+              <Text style={estilos.tituloSeccion}>
+                MENÚ PRINCIPAL
+              </Text>
 
               {opcionesVisibles.map((opcion) => {
                 const activa = esRutaActiva(opcion.ruta);
@@ -371,7 +459,8 @@ export default function MenuLateralDerecho({
                     <View
                       style={[
                         estilos.iconoContenedor,
-                        activa && estilos.iconoContenedorActivo,
+                        activa &&
+                          estilos.iconoContenedorActivo,
                       ]}
                     >
                       <Text
@@ -395,33 +484,45 @@ export default function MenuLateralDerecho({
                     </Text>
 
                     {activa && (
-                      <View style={estilos.indicadorSeleccionado} />
+                      <View
+                        style={estilos.indicadorSeleccionado}
+                      />
                     )}
                   </TouchableOpacity>
                 );
               })}
 
-              <Text style={estilos.tituloSeccion}>MI CUENTA</Text>
+              <Text style={estilos.tituloSeccion}>
+                MI CUENTA
+              </Text>
 
               <TouchableOpacity
                 style={[
                   estilos.opcion,
-                  esRutaActiva('/perfil') && estilos.opcionActiva,
+                  esRutaActiva('/perfil') &&
+                    estilos.opcionActiva,
                 ]}
                 onPress={abrirPerfil}
                 activeOpacity={0.75}
               >
                 <View style={estilos.iconoContenedor}>
-                  <Text style={estilos.iconoOpcion}>♙</Text>
+                  <Text style={estilos.iconoOpcion}>
+                    ♙
+                  </Text>
                 </View>
 
-                <Text style={estilos.textoOpcion}>Mi perfil</Text>
+                <Text style={estilos.textoOpcion}>
+                  Mi perfil
+                </Text>
               </TouchableOpacity>
             </ScrollView>
 
             {verificandoRol && (
               <View style={estilos.cargando}>
-                <ActivityIndicator color={C.acento} size="small" />
+                <ActivityIndicator
+                  color={C.acento}
+                  size="small"
+                />
                 <Text style={estilos.textoCargando}>
                   Verificando permisos...
                 </Text>
@@ -436,7 +537,9 @@ export default function MenuLateralDerecho({
                 disabled={cerrandoSesion}
               >
                 <View style={estilos.iconoSalir}>
-                  <Text style={estilos.glifoSalir}>⇥</Text>
+                  <Text style={estilos.glifoSalir}>
+                    ⇥
+                  </Text>
                 </View>
 
                 <Text style={estilos.textoCerrarSesion}>
@@ -469,7 +572,9 @@ export default function MenuLateralDerecho({
 
           <View style={estilos.tarjetaConfirmacion}>
             <View style={estilos.iconoConfirmacion}>
-              <Text style={estilos.glifoConfirmacion}>⇥</Text>
+              <Text style={estilos.glifoConfirmacion}>
+                ⇥
+              </Text>
             </View>
 
             <Text style={estilos.tituloConfirmacion}>
@@ -490,7 +595,9 @@ export default function MenuLateralDerecho({
                 {cerrandoSesion ? (
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
-                  <Text style={estilos.textoBotonConfirmar}>
+                  <Text
+                    style={estilos.textoBotonConfirmar}
+                  >
                     Cerrar sesión
                   </Text>
                 )}

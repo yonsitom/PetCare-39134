@@ -1,7 +1,7 @@
 import {
   filtrarAtencionesPorEstado,
   obtenerFiltroEstadoInicial,
-} from '../../services/atencionesFiltroServicio';
+} from '../../services/atencion/atencionesFiltroServicio';
 
 describe('RF21: Filtrar las atenciones según su estado', () => {
   // ARRANGE GENERAL: datos de prueba para los escenarios CP01 y CP04.
@@ -51,7 +51,7 @@ describe('RF21: Filtrar las atenciones según su estado', () => {
     // ARRANGE: simular un fallo del DAO sin consultar Supabase.
     jest.resetModules();
 
-    jest.doMock('../../dao/atencionesDAO', () => ({
+    jest.doMock('../../dao/atencion/atencionesDAO', () => ({
       consultarAtenciones: jest.fn().mockRejectedValue(
         new Error('Error simulado de conexión')
       ),
@@ -62,7 +62,7 @@ describe('RF21: Filtrar las atenciones según su estado', () => {
       consultarDatosConsulta: jest.fn(),
     }));
 
-    jest.doMock('../../dao/actividadesDAO', () => ({
+    jest.doMock('../../dao/actividades/actividadesDAO', () => ({
       consultarActividadesPorAtencion: jest.fn(),
       validarQueNoExistaActividadAbierta: jest.fn(),
     }));
@@ -79,8 +79,8 @@ describe('RF21: Filtrar las atenciones según su estado', () => {
       ).rejects.toThrow('Error simulado de conexión');
     } finally {
       // LIMPIEZA: retirar los mocks para no afectar otras pruebas.
-      jest.dontMock('../../dao/atencionesDAO');
-      jest.dontMock('../../dao/actividadesDAO');
+      jest.dontMock('../../dao/atencion/atencionesDAO');
+      jest.dontMock('../../dao/actividades/actividadesDAO');
       jest.resetModules();
     }
   });

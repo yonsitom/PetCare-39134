@@ -14,7 +14,6 @@
 import {
   consultarConteosAdministracionDAO,
 } from '../../dao/administracion/indicadoresAdministracionDAO';
-import { logger } from '../../utils/logger';
 
 // ------------------------------------------------------
 // CONFIGURACIÓN DE RF48
@@ -263,7 +262,7 @@ export async function consultarIndicadoresAdministracion() {
       advertencias,
     };
   } catch (error) {
-    logger.error(
+    console.error(
       'Error al consultar el resumen general:',
       error
     );

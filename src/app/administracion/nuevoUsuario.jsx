@@ -1,3 +1,4 @@
+
 import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,7 +17,6 @@ import { router } from 'expo-router';
 import { supabase } from '../../services/supabase';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import { gestionarRegistroUsuario } from '../../services/administracion/gestionRegistroUsuario';
-import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -73,6 +73,7 @@ export default function NuevoUsuario() {
 
   const irAlCampo = (campo) => {
     const posicion = posicionesCampos.current[campo];
+
     if (typeof posicion === 'number') {
       scrollRef.current?.scrollTo({
         y: Math.max(0, posicion - 24),
@@ -83,6 +84,7 @@ export default function NuevoUsuario() {
 
   const mostrarErrores = (nuevosErrores) => {
     setErrores(nuevosErrores);
+
     const ordenCampos = [
       'nombres',
       'apellidos',
@@ -94,9 +96,11 @@ export default function NuevoUsuario() {
       'confirmarContrasena',
       'general',
     ];
+
     const primerCampo = ordenCampos.find((campo) =>
       Boolean(nuevosErrores[campo])
     );
+
     if (primerCampo) {
       requestAnimationFrame(() => irAlCampo(primerCampo));
     }
@@ -104,6 +108,7 @@ export default function NuevoUsuario() {
 
   const validarFormulario = () => {
     const e = {};
+
     const {
       nombres,
       apellidos,
@@ -115,8 +120,13 @@ export default function NuevoUsuario() {
       rol,
     } = formulario;
 
-    if (!nombres.trim()) e.nombres = 'Ingresa los nombres del usuario.';
-    if (!apellidos.trim()) e.apellidos = 'Ingresa los apellidos del usuario.';
+    if (!nombres.trim()) {
+      e.nombres = 'Ingresa los nombres del usuario.';
+    }
+
+    if (!apellidos.trim()) {
+      e.apellidos = 'Ingresa los apellidos del usuario.';
+    }
 
     if (!dni.trim()) {
       e.dni = 'Ingresa el DNI del usuario.';
@@ -164,7 +174,10 @@ export default function NuevoUsuario() {
     const mensaje = String(
       data?.mensaje || data?.message || error?.message || ''
     ).toLowerCase();
-    const codigo = String(data?.code || error?.code || '').toUpperCase();
+
+    const codigo = String(
+      data?.code || error?.code || ''
+    ).toUpperCase();
 
     if (
       codigo === 'EMAIL_EXISTS' ||
@@ -175,7 +188,9 @@ export default function NuevoUsuario() {
       (mensaje.includes('correo') && mensaje.includes('registrado')) ||
       mensaje.includes('user already registered')
     ) {
-      return { correo: 'El correo electrónico ya se encuentra registrado.' };
+      return {
+        correo: 'El correo electrónico ya se encuentra registrado.',
+      };
     }
 
     if (
@@ -185,7 +200,9 @@ export default function NuevoUsuario() {
         mensaje.includes('exists') ||
         mensaje.includes('ya existe'))
     ) {
-      return { dni: 'El DNI ya se encuentra registrado.' };
+      return {
+        dni: 'El DNI ya se encuentra registrado.',
+      };
     }
 
     return {
@@ -195,15 +212,18 @@ export default function NuevoUsuario() {
     };
   };
 
-  // El botón del formulario solo valida y abre el modal. Todavía no guarda.
+  // El botón del formulario solo valida y abre el modal.
+  // Todavía no realiza ninguna operación de registro.
   const registrarUsuario = () => {
     if (cargando || registroExitoso) return;
+
     if (!validarFormulario()) return;
+
     setModalConfirmacionVisible(true);
   };
 
-  // Esta función solo se ejecuta al pulsar "Sí, registrar" en el modal.
-    // RF44 - CP01–CP05: registro integrado con el servicio de negocio.
+  // RF44 - CP01–CP05:
+  // Confirma el registro y coordina la operación mediante el servicio.
   // CP06 se bloquea en validarFormulario antes de abrir la confirmación.
   const confirmarRegistro = async () => {
     if (cargando) return;
@@ -244,6 +264,7 @@ export default function NuevoUsuario() {
         perfil?.estado_cuenta !== 'Activo'
       ) {
         const mensaje = 'No tienes permisos para registrar usuarios.';
+
         mostrarErrores({ general: mensaje });
         setErrorGeneral(mensaje);
         return;
@@ -253,7 +274,8 @@ export default function NuevoUsuario() {
       const resultado = await gestionarRegistroUsuario(
         formulario,
         async (datos) => {
-          // ACT: mantener el registro seguro en la Edge Function.
+          // ACT: ejecutar el registro mediante la Edge Function.
+          // La contraseña no se inserta directamente en perfiles.
           const { data, error } = await supabase.functions.invoke(
             'administrar-usuarios',
             {
@@ -264,23 +286,75 @@ export default function NuevoUsuario() {
             }
           );
 
-          // ASSERT: una respuesta incompleta o con error no es éxito.
-          if (error || !data?.usuario) {
-            logger.error('Respuesta del registro:', data);
-            logger.error('Error del registro:', error?.message);
+          // Si Supabase devuelve un error HTTP, intentar leer
+          // el detalle enviado por la Edge Function.
+          if (error) {
+            let detalleError = '';
+            let respuestaError = {};
+
+            try {
+              if (error.context) {
+                detalleError = await error.context.clone().text();
+
+                try {
+                  respuestaError = JSON.parse(detalleError);
+                } catch {
+                  respuestaError = {};
+                }
+              }
+            } catch (errorLectura) {
+              console.error(
+                'No se pudo leer la respuesta HTTP:',
+                errorLectura
+              );
+            }
+
+            console.error(
+              'ERROR EDGE FUNCTION administrar-usuarios'
+            );
+            console.error(
+              'Estado HTTP:',
+              error.context?.status
+            );
+            console.error('Mensaje:', error.message);
+            console.error(
+              'Respuesta del servidor:',
+              detalleError
+            );
 
             return {
               error,
               mensaje:
-                data?.mensaje ||
-                data?.message ||
-                error?.message ||
-                '',
-              code: data?.code || error?.code || '',
+                respuestaError.mensaje ||
+                respuestaError.message ||
+                detalleError ||
+                error.message ||
+                'Error desconocido al registrar el usuario.',
+              code:
+                respuestaError.code ||
+                String(error.context?.status || error.code || ''),
             };
           }
 
-          return { usuario: data.usuario };
+          // ASSERT: comprobar que la función confirmó la creación.
+          if (!data?.usuario) {
+            console.error(
+              'La Edge Function no devolvió el usuario:',
+              data
+            );
+
+            return {
+              mensaje:
+                data?.mensaje ||
+                data?.message ||
+                'La función no confirmó la creación del usuario.',
+              code: data?.code || '',
+            };
+          }
+
+          return {
+            usuario: data.usuario,
+          };
         }
       );
 
@@ -292,7 +366,9 @@ export default function NuevoUsuario() {
 
         if (resultado.mensaje) {
           setErrorGeneral(resultado.mensaje);
-          mostrarErrores({ general: resultado.mensaje });
+          mostrarErrores({
+            general: resultado.mensaje,
+          });
         }
 
         return;
@@ -311,7 +387,7 @@ export default function NuevoUsuario() {
 
       setRegistroExitoso(true);
     } catch (error) {
-      logger.error('Error al registrar usuario:', error);
+      console.error('Error al registrar usuario:', error);
 
       const mensaje =
         'No se pudo verificar el registro. Inténtalo nuevamente.';
@@ -324,7 +400,9 @@ export default function NuevoUsuario() {
   };
 
   const volver = () => {
-    if (!cargando) router.back();
+    if (!cargando) {
+      router.back();
+    }
   };
 
   const campoTexto = (etiqueta, campo, opciones = {}) => (
@@ -343,7 +421,10 @@ export default function NuevoUsuario() {
       </Text>
 
       <TextInput
-        style={[styles.entrada, errores[campo] && styles.entradaError]}
+        style={[
+          styles.entrada,
+          errores[campo] && styles.entradaError,
+        ]}
         value={formulario[campo]}
         onChangeText={(valor) => actualizarCampo(campo, valor)}
         placeholder={
@@ -358,14 +439,19 @@ export default function NuevoUsuario() {
       />
 
       {!!errores[campo] && (
-        <Text style={styles.textoError}>⚠ {errores[campo]}</Text>
+        <Text style={styles.textoError}>
+          ⚠ {errores[campo]}
+        </Text>
       )}
     </View>
   );
 
   return (
     <View style={styles.pantalla}>
-      <StatusBar barStyle="dark-content" backgroundColor={C.blanco} />
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor={C.blanco}
+      />
 
       <EncabezadoPetCare
         onAbrirMenu={() => {}}
@@ -387,7 +473,10 @@ export default function NuevoUsuario() {
                 <Text style={styles.textoIconoExito}>✓</Text>
               </View>
 
-              <Text style={styles.tituloExito}>Registro exitoso</Text>
+              <Text style={styles.tituloExito}>
+                Registro exitoso
+              </Text>
+
               <Text style={styles.mensajeExito}>
                 Los datos del usuario se registraron correctamente.
               </Text>
@@ -398,19 +487,26 @@ export default function NuevoUsuario() {
                 </Text>
 
                 <View style={styles.filaResumen}>
-                  <Text style={styles.etiquetaResumen}>Nombres y apellidos</Text>
+                  <Text style={styles.etiquetaResumen}>
+                    Nombres y apellidos
+                  </Text>
                   <Text style={styles.valorResumen}>
-                    {usuarioRegistrado.nombres} {usuarioRegistrado.apellidos}
+                    {usuarioRegistrado.nombres}{' '}
+                    {usuarioRegistrado.apellidos}
                   </Text>
                 </View>
 
                 <View style={styles.filaResumen}>
                   <Text style={styles.etiquetaResumen}>DNI</Text>
-                  <Text style={styles.valorResumen}>{usuarioRegistrado.dni}</Text>
+                  <Text style={styles.valorResumen}>
+                    {usuarioRegistrado.dni}
+                  </Text>
                 </View>
 
                 <View style={styles.filaResumen}>
-                  <Text style={styles.etiquetaResumen}>Correo electrónico</Text>
+                  <Text style={styles.etiquetaResumen}>
+                    Correo electrónico
+                  </Text>
                   <Text style={styles.valorResumen}>
                     {usuarioRegistrado.correo}
                   </Text>
@@ -418,7 +514,9 @@ export default function NuevoUsuario() {
 
                 <View style={styles.filaResumen}>
                   <Text style={styles.etiquetaResumen}>Rol</Text>
-                  <Text style={styles.valorResumen}>{usuarioRegistrado.rol}</Text>
+                  <Text style={styles.valorResumen}>
+                    {usuarioRegistrado.rol}
+                  </Text>
                 </View>
               </View>
 
@@ -437,23 +535,33 @@ export default function NuevoUsuario() {
           ) : (
             <>
               <View style={styles.ruta}>
-                <TouchableOpacity onPress={() => router.replace('/inicio')}>
+                <TouchableOpacity
+                  onPress={() => router.replace('/inicio')}
+                >
                   <Text style={styles.enlaceRuta}>Inicio</Text>
                 </TouchableOpacity>
+
                 <Text style={styles.separador}> / </Text>
+
                 <TouchableOpacity
                   onPress={() =>
                     router.replace('/administracion/gestionUsuario')
                   }
                 >
-                  <Text style={styles.enlaceRuta}>Gestión de usuarios</Text>
+                  <Text style={styles.enlaceRuta}>
+                    Gestión de usuarios
+                  </Text>
                 </TouchableOpacity>
+
                 <Text style={styles.separador}> / </Text>
                 <Text style={styles.rutaActual}>Registro</Text>
               </View>
 
               <View style={styles.encabezado}>
-                <Text style={styles.titulo}>Registrar nuevo usuario</Text>
+                <Text style={styles.titulo}>
+                  Registrar nuevo usuario
+                </Text>
+
                 <Text style={styles.descripcion}>
                   Registra una cuenta para el personal de la veterinaria.
                   Los campos marcados con * son obligatorios.
@@ -461,10 +569,18 @@ export default function NuevoUsuario() {
               </View>
 
               <View style={styles.tarjeta}>
-                <Text style={styles.tituloSeccion}>Información personal</Text>
+                <Text style={styles.tituloSeccion}>
+                  Información personal
+                </Text>
 
-                {campoTexto('Nombres', 'nombres', { obligatorio: true })}
-                {campoTexto('Apellidos', 'apellidos', { obligatorio: true })}
+                {campoTexto('Nombres', 'nombres', {
+                  obligatorio: true,
+                })}
+
+                {campoTexto('Apellidos', 'apellidos', {
+                  obligatorio: true,
+                })}
+
                 {campoTexto('DNI', 'dni', {
                   obligatorio: true,
                   placeholder: 'Ingrese los 8 dígitos del DNI',
@@ -472,29 +588,36 @@ export default function NuevoUsuario() {
                   autoCapitalize: 'none',
                   maxLength: 8,
                 })}
+
                 {campoTexto('Correo electrónico', 'correo', {
                   obligatorio: true,
                   placeholder: 'ejemplo@correo.com',
                   keyboardType: 'email-address',
                   autoCapitalize: 'none',
                 })}
+
                 {campoTexto('Celular', 'telefono', {
                   placeholder: 'Ejemplo: 987654321',
                   keyboardType: 'phone-pad',
                   autoCapitalize: 'none',
                   maxLength: 9,
                 })}
+
                 {campoTexto('Dirección', 'direccion', {
                   autoCapitalize: 'sentences',
                 })}
               </View>
 
               <View style={styles.tarjeta}>
-                <Text style={styles.tituloSeccion}>Acceso al sistema</Text>
+                <Text style={styles.tituloSeccion}>
+                  Acceso al sistema
+                </Text>
 
                 <View
                   style={styles.grupoCampo}
-                  onLayout={(evento) => registrarPosicion('rol', evento)}
+                  onLayout={(evento) =>
+                    registrarPosicion('rol', evento)
+                  }
                 >
                   <Text style={styles.etiqueta}>
                     Rol <Text style={styles.asterisco}>*</Text>
@@ -503,12 +626,14 @@ export default function NuevoUsuario() {
                   <View style={styles.roles}>
                     {['Asistente', 'Administrador'].map((rol) => {
                       const seleccionado = formulario.rol === rol;
+
                       return (
                         <TouchableOpacity
                           key={rol}
                           style={[
                             styles.opcionRol,
-                            seleccionado && styles.opcionRolSeleccionada,
+                            seleccionado &&
+                              styles.opcionRolSeleccionada,
                             errores.rol && styles.entradaError,
                           ]}
                           onPress={() => actualizarCampo('rol', rol)}
@@ -517,7 +642,8 @@ export default function NuevoUsuario() {
                           <Text
                             style={[
                               styles.textoRol,
-                              seleccionado && styles.textoRolSeleccionado,
+                              seleccionado &&
+                                styles.textoRolSeleccionado,
                             ]}
                           >
                             {seleccionado ? '● ' : '○ '}
@@ -527,8 +653,11 @@ export default function NuevoUsuario() {
                       );
                     })}
                   </View>
+
                   {!!errores.rol && (
-                    <Text style={styles.textoError}>⚠ {errores.rol}</Text>
+                    <Text style={styles.textoError}>
+                      ⚠ {errores.rol}
+                    </Text>
                   )}
                 </View>
 
@@ -539,8 +668,10 @@ export default function NuevoUsuario() {
                   }
                 >
                   <Text style={styles.etiqueta}>
-                    Contraseña <Text style={styles.asterisco}>*</Text>
+                    Contraseña{' '}
+                    <Text style={styles.asterisco}>*</Text>
                   </Text>
+
                   <View
                     style={[
                       styles.contenedorContrasena,
@@ -560,6 +691,7 @@ export default function NuevoUsuario() {
                       autoCorrect={false}
                       editable={!cargando}
                     />
+
                     <TouchableOpacity
                       onPress={() =>
                         setMostrarContrasena((actual) => !actual)
@@ -571,6 +703,7 @@ export default function NuevoUsuario() {
                       </Text>
                     </TouchableOpacity>
                   </View>
+
                   {!!errores.contrasena && (
                     <Text style={styles.textoError}>
                       ⚠ {errores.contrasena}
@@ -581,43 +714,59 @@ export default function NuevoUsuario() {
                 <View
                   style={styles.grupoCampo}
                   onLayout={(evento) =>
-                    registrarPosicion('confirmarContrasena', evento)
+                    registrarPosicion(
+                      'confirmarContrasena',
+                      evento
+                    )
                   }
                 >
                   <Text style={styles.etiqueta}>
                     Confirmar contraseña{' '}
                     <Text style={styles.asterisco}>*</Text>
                   </Text>
+
                   <View
                     style={[
                       styles.contenedorContrasena,
-                      errores.confirmarContrasena && styles.entradaError,
+                      errores.confirmarContrasena &&
+                        styles.entradaError,
                     ]}
                   >
                     <TextInput
                       style={styles.entradaContrasena}
                       value={formulario.confirmarContrasena}
                       onChangeText={(valor) =>
-                        actualizarCampo('confirmarContrasena', valor)
+                        actualizarCampo(
+                          'confirmarContrasena',
+                          valor
+                        )
                       }
                       placeholder="Repita la contraseña"
                       placeholderTextColor="#94A3B8"
-                      secureTextEntry={!mostrarConfirmacionContrasena}
+                      secureTextEntry={
+                        !mostrarConfirmacionContrasena
+                      }
                       autoCapitalize="none"
                       autoCorrect={false}
                       editable={!cargando}
                     />
+
                     <TouchableOpacity
                       onPress={() =>
-                        setMostrarConfirmacionContrasena((actual) => !actual)
+                        setMostrarConfirmacionContrasena(
+                          (actual) => !actual
+                        )
                       }
                       disabled={cargando}
                     >
                       <Text style={styles.textoMostrar}>
-                        {mostrarConfirmacionContrasena ? 'Ocultar' : 'Mostrar'}
+                        {mostrarConfirmacionContrasena
+                          ? 'Ocultar'
+                          : 'Mostrar'}
                       </Text>
                     </TouchableOpacity>
                   </View>
+
                   {!!errores.confirmarContrasena && (
                     <Text style={styles.textoError}>
                       ⚠ {errores.confirmarContrasena}
@@ -626,7 +775,11 @@ export default function NuevoUsuario() {
                 </View>
               </View>
 
-              <View onLayout={(evento) => registrarPosicion('general', evento)}>
+              <View
+                onLayout={(evento) =>
+                  registrarPosicion('general', evento)
+                }
+              >
                 {!!errorGeneral && (
                   <View style={styles.mensajeGeneral}>
                     <Text style={styles.textoErrorGeneral}>
@@ -642,7 +795,9 @@ export default function NuevoUsuario() {
                   onPress={volver}
                   disabled={cargando}
                 >
-                  <Text style={styles.textoCancelar}>Cancelar</Text>
+                  <Text style={styles.textoCancelar}>
+                    Cancelar
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -657,7 +812,9 @@ export default function NuevoUsuario() {
                   {cargando ? (
                     <ActivityIndicator color={C.blanco} />
                   ) : (
-                    <Text style={styles.textoGuardar}>Registrar usuario</Text>
+                    <Text style={styles.textoGuardar}>
+                      Registrar usuario
+                    </Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -673,7 +830,9 @@ export default function NuevoUsuario() {
         transparent
         animationType="fade"
         onRequestClose={() => {
-          if (!cargando) setModalConfirmacionVisible(false);
+          if (!cargando) {
+            setModalConfirmacionVisible(false);
+          }
         }}
       >
         <View style={styles.fondoModal}>
@@ -682,19 +841,27 @@ export default function NuevoUsuario() {
               <Text style={styles.textoIconoPregunta}>?</Text>
             </View>
 
-            <Text style={styles.tituloModal}>¿Confirmar registro?</Text>
+            <Text style={styles.tituloModal}>
+              ¿Confirmar registro?
+            </Text>
+
             <Text style={styles.mensajeModal}>
-              ¿Deseas registrar esta cuenta de usuario con los datos ingresados?
+              ¿Deseas registrar esta cuenta de usuario con los datos
+              ingresados?
             </Text>
 
             <View style={styles.botonesModal}>
               <TouchableOpacity
                 style={styles.botonModalCancelar}
-                onPress={() => setModalConfirmacionVisible(false)}
+                onPress={() =>
+                  setModalConfirmacionVisible(false)
+                }
                 disabled={cargando}
                 activeOpacity={0.8}
               >
-                <Text style={styles.textoModalCancelar}>Cancelar</Text>
+                <Text style={styles.textoModalCancelar}>
+                  Cancelar
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -709,7 +876,9 @@ export default function NuevoUsuario() {
                 {cargando ? (
                   <ActivityIndicator color={C.blanco} />
                 ) : (
-                  <Text style={styles.textoModalConfirmar}>Sí, registrar</Text>
+                  <Text style={styles.textoModalConfirmar}>
+                    Sí, registrar
+                  </Text>
                 )}
               </TouchableOpacity>
             </View>

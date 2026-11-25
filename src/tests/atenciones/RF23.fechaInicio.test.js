@@ -1,5 +1,5 @@
 
-jest.mock('../../dao/atencionesDAO', () => ({
+jest.mock('../../dao/atencion/atencionesDAO', () => ({
   consultarAtenciones: jest.fn(),
   consultarMascotasParaAtencion: jest.fn(),
   crearAtencionInicial: jest.fn(),
@@ -8,13 +8,13 @@ jest.mock('../../dao/atencionesDAO', () => ({
   consultarDatosConsulta: jest.fn(),
 }));
 
-jest.mock('../../dao/actividadesDAO', () => ({
+jest.mock('../../dao/actividades/actividadesDAO', () => ({
   consultarActividadesPorAtencion: jest.fn(),
   validarQueNoExistaActividadAbierta: jest.fn(),
 }));
 
-import { crearAtencionInicial } from '../../dao/atencionesDAO';
-import { validarQueNoExistaActividadAbierta } from '../../dao/actividadesDAO';
+import { crearAtencionInicial } from '../../dao/atencion/atencionesDAO';
+import { validarQueNoExistaActividadAbierta } from '../../dao/actividades/actividadesDAO';
 import {
   confirmarAtencion,
 } from '../../controllers/atenciones/atencionesControlador';

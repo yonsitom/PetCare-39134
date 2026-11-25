@@ -29,7 +29,6 @@ import {
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 import TarjetaUsuario from '../../components/administracion/TarjetaUsuario';
-import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -43,6 +42,42 @@ const C = {
   verdeClaro: '#E5F5F1',
 };
 
+/**
+ * Normaliza los estados para evitar diferencias
+ * por mayúsculas, minúsculas o espacios.
+ */
+const normalizarEstado = (estado) => {
+  const valor = String(estado ?? '')
+    .trim()
+    .toLowerCase();
+
+  if (valor === 'activo') {
+    return 'Activo';
+  }
+
+  if (valor === 'inactivo') {
+    return 'Inactivo';
+  }
+
+  return String(estado ?? '').trim();
+};
+
+/**
+ * Normaliza los datos recibidos del servicio.
+ */
+const normalizarUsuarios = (datos) => {
+  const lista = Array.isArray(datos)
+    ? datos
+    : Array.isArray(datos?.usuarios)
+      ? datos.usuarios
+      : [];
+
+  return lista.map((usuario) => ({
+    ...usuario,
+    estado_cuenta: normalizarEstado(usuario.estado_cuenta),
+  }));
+};
+
 export default function GestionUsuario() {
   const [usuarios, setUsuarios] = useState([]);
   const [busqueda, setBusqueda] = useState('');
@@ -54,6 +89,9 @@ export default function GestionUsuario() {
   const [nombreUsuario, setNombreUsuario] = useState('Usuario');
   const [rolUsuario, setRolUsuario] = useState('Administrador');
 
+  /**
+   * CUS44: consulta y presenta los usuarios registrados.
+   */
   const cargarUsuarios = useCallback(
     async (esActualizacion = false) => {
       try {
@@ -94,7 +132,7 @@ export default function GestionUsuario() {
 
         if (
           perfil?.rol !== 'Administrador' ||
-          perfil?.estado_cuenta !== 'Activo'
+          normalizarEstado(perfil?.estado_cuenta) !== 'Activo'
         ) {
           Alert.alert(
             'Acceso restringido',
@@ -106,19 +144,46 @@ export default function GestionUsuario() {
               },
             ]
           );
+
           return;
         }
 
         setNombreUsuario(
           perfil.nombre_completo || 'Administrador'
         );
+
         setRolUsuario(perfil.rol);
 
+        // Consulta mediante el servicio de administración.
         const datos = await consultarUsuarios();
 
-        setUsuarios(Array.isArray(datos) ? datos : []);
+        // Normaliza los datos antes de actualizar la pantalla.
+        const usuariosNormalizados = normalizarUsuarios(datos);
+
+        console.log('========== VISTA GESTIÓN DE USUARIOS ==========');
+        console.log('Tipo de respuesta:', Array.isArray(datos) ? 'Array' : typeof datos);
+        console.log('Cantidad recibida:', usuariosNormalizados.length);
+        console.log(
+          'Estados normalizados:',
+          usuariosNormalizados.map((usuario) => usuario.estado_cuenta)
+        );
+        console.log(
+          'Activos:',
+          usuariosNormalizados.filter(
+            (usuario) => usuario.estado_cuenta === 'Activo'
+          ).length
+        );
+        console.log(
+          'Inactivos:',
+          usuariosNormalizados.filter(
+            (usuario) => usuario.estado_cuenta === 'Inactivo'
+          ).length
+        );
+        console.log('===============================================');
+
+        setUsuarios(usuariosNormalizados);
       } catch (e) {
-        logger.error('Error al cargar usuarios:', e);
+        console.error('Error al cargar usuarios:', e);
 
         setError(
           e?.message ||
@@ -135,22 +200,37 @@ export default function GestionUsuario() {
   useFocusEffect(
     useCallback(() => {
       cargarUsuarios();
+
+      return undefined;
     }, [cargarUsuarios])
   );
 
-  const conteos = useMemo(
-    () => ({
+  /**
+   * Calcula los indicadores a partir de los usuarios cargados.
+   */
+  const conteos = useMemo(() => {
+    const resultado = {
       Todos: usuarios.length,
-      Activos: usuarios.filter(
-        (u) => u.estado_cuenta === 'Activo'
-      ).length,
-      Inactivos: usuarios.filter(
-        (u) => u.estado_cuenta === 'Inactivo'
-      ).length,
-    }),
-    [usuarios]
-  );
+      Activos: 0,
+      Inactivos: 0,
+    };
 
+    usuarios.forEach((usuario) => {
+      const estado = normalizarEstado(usuario.estado_cuenta);
+
+      if (estado === 'Activo') {
+        resultado.Activos += 1;
+      } else if (estado === 'Inactivo') {
+        resultado.Inactivos += 1;
+      }
+    });
+
+    return resultado;
+  }, [usuarios]);
+
+  /**
+   * Aplica búsqueda y filtro de estado.
+   */
   const usuariosFiltrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
 
@@ -164,12 +244,12 @@ export default function GestionUsuario() {
         String(valor || '').toLowerCase().includes(texto)
       );
 
+      const estado = normalizarEstado(usuario.estado_cuenta);
+
       const coincideEstado =
         filtro === 'Todos' ||
-        (filtro === 'Activos' &&
-          usuario.estado_cuenta === 'Activo') ||
-        (filtro === 'Inactivos' &&
-          usuario.estado_cuenta === 'Inactivo');
+        (filtro === 'Activos' && estado === 'Activo') ||
+        (filtro === 'Inactivos' && estado === 'Inactivo');
 
       return coincideBusqueda && coincideEstado;
     });
@@ -201,7 +281,6 @@ export default function GestionUsuario() {
   /**
    * RF07: Cerrar sesión.
    * La confirmación se muestra únicamente en MenuLateralDerecho.
-   * Esta función solo cierra la sesión después de confirmar.
    */
   const cerrarSesion = async () => {
     try {
@@ -215,7 +294,6 @@ export default function GestionUsuario() {
       setMenuAbierto(false);
       router.replace('/');
     } catch (e) {
-      // Se propaga el error para que el menú lo gestione.
       throw e;
     }
   };
@@ -227,7 +305,6 @@ export default function GestionUsuario() {
         backgroundColor={C.primarioOscuro}
       />
 
-      {/* Encabezado principal */}
       <EncabezadoPetCare
         onAbrirMenu={() => setMenuAbierto(true)}
         onAbrirNotificaciones={() =>
@@ -277,7 +354,7 @@ export default function GestionUsuario() {
           </Text>
         </View>
 
-        {/* Título con botón de regreso */}
+        {/* Encabezado */}
         <View style={styles.encabezado}>
           <View style={styles.tituloContenedor}>
             <View style={styles.filaTitulo}>
@@ -332,7 +409,7 @@ export default function GestionUsuario() {
           </View>
 
           <Text style={styles.totalUsuarios}>
-            {cargando ? '…' : usuarios.length}
+            {cargando ? '…' : conteos.Todos}
           </Text>
         </View>
 
@@ -379,18 +456,17 @@ export default function GestionUsuario() {
                 <Text
                   style={[
                     styles.textoFiltro,
-                    seleccionado &&
-                      styles.textoFiltroSeleccionado,
+                    seleccionado && styles.textoFiltroSeleccionado,
                   ]}
                 >
-                  {opcion} ({conteos[opcion]})
+                  {opcion} ({cargando ? '…' : conteos[opcion]})
                 </Text>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* Lista, carga, errores o estado vacío */}
+        {/* Contenido */}
         {cargando ? (
           <View style={styles.centro}>
             <ActivityIndicator

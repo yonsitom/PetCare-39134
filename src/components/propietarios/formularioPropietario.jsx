@@ -76,7 +76,6 @@ export default function FormularioPropietario({
   actualizarCampo,
   errores = {},
   campoConError,
-  mensajeGeneral,
   guardando = false,
   onCancelar,
   onContinuar,
@@ -102,13 +101,6 @@ export default function FormularioPropietario({
       showsVerticalScrollIndicator={false}
     >
 
-      {mensajeGeneral ? (
-        <View style={estilos.mensajeGeneral}>
-          <Text style={estilos.textoMensaje}>
-            {mensajeGeneral}
-          </Text>
-        </View>
-      ) : null}
 
       {CAMPOS.map((campo) => {
         const tieneError = Boolean(errores[campo.nombre]);

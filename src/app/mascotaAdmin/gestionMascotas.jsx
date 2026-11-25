@@ -17,13 +17,12 @@ import { router } from 'expo-router';
 import { supabase } from '../../services/supabase';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
-import { consultarMascotaPorId } from '../../dao/mascotaDAO';
+import { consultarMascotaPorId } from '../../dao/mascotas/mascotaDAO';
 import {
   buscarMascotasAdministracion,
   consultarMascotasAdministracion,
   gestionarEstadoMascota,
 } from '../../services/administracion/mascotasService';
-import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -140,7 +139,7 @@ export default function GestionMascotas() {
       setNombreUsuario(data.nombre_completo || 'Usuario');
       setRolUsuario(data.rol || 'Asistente');
     } catch (e) {
-      logger.error('Error al cargar perfil:', e);
+      console.error('Error al cargar perfil:', e);
     }
   }, []);
 
@@ -160,7 +159,7 @@ export default function GestionMascotas() {
       // ASSERT: Mantener un arreglo válido para renderizar los resultados.
       setMascotas(Array.isArray(resultado) ? resultado : []);
     } catch (e) {
-      logger.error('Error al cargar mascotas:', e);
+      console.error('Error al cargar mascotas:', e);
 
       setError(
         e?.message ||
@@ -240,7 +239,7 @@ useEffect(() => {
         setMascotaSeleccionada(detalle);
       }
     } catch (e) {
-      logger.error('Error al consultar detalle:', e);
+      console.error('Error al consultar detalle:', e);
       Alert.alert(
         'Error',
         'No se pudo cargar toda la información de la mascota.'
@@ -326,7 +325,7 @@ useEffect(() => {
 
       await cargarMascotas(busqueda);
     } catch (e) {
-      logger.error('Error al cambiar el estado de la mascota:', e);
+      console.error('Error al cambiar el estado de la mascota:', e);
 
       // ASSERT: No presentar el cambio como exitoso si hubo un error.
       setMascotas(listaAnterior);
@@ -355,12 +354,12 @@ useEffect(() => {
       setMenuAbierto(false);
       router.replace('/');
     } catch (e) {
-      logger.error('Error al cerrar sesión:', e);
+      console.error('Error al cerrar sesión:', e);
       Alert.alert('Error', 'No se pudo cerrar la sesión.');
     }
   };
 
-  const volverAdministracion = () => router.replace('/administracion');
+  const volverAdministracion = () => router.replace('/administracion/administracion');
 
   return (
     <SafeAreaView style={styles.contenedor}>

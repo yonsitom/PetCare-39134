@@ -1,3 +1,4 @@
+
 jest.mock('../../services/supabase', () => ({
   supabase: {
     from: jest.fn(),
@@ -5,14 +6,15 @@ jest.mock('../../services/supabase', () => ({
 }));
 
 import { supabase } from '../../services/supabase';
-import { finalizarAtencionSiCorresponde } from '../../dao/actividadesDAO';
+import {
+  finalizarAtencionSiCorresponde,
+} from '../../dao/actividades/actividadesDAO';
 
 describe('RF25 — Finalización automática de atención', () => {
   let atencion;
   let actividades;
   let actualizacion;
   let actualizarAtencion;
-  let consultarActividades;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -44,23 +46,6 @@ describe('RF25 — Finalización automática de atención', () => {
       })),
     }));
 
-    consultarActividades = jest.fn(() => {
-      const consulta = {
-        eq: jest.fn(),
-        order: jest.fn(),
-        then: (resolve, reject) =>
-          Promise.resolve({
-            data: actividades,
-            error: null,
-          }).then(resolve, reject),
-      };
-
-      consulta.eq.mockImplementation(() => consulta);
-      consulta.order.mockImplementation(() => consulta);
-
-      return consulta;
-    });
-
     supabase.from.mockImplementation((tabla) => {
       if (tabla === 'atenciones') {
         return {
@@ -72,19 +57,24 @@ describe('RF25 — Finalización automática de atención', () => {
               }),
             })),
           })),
-
           update: actualizarAtencion,
         };
       }
 
       if (tabla === 'actividades') {
-        return {
-          select: jest.fn(() => ({
-            eq: jest.fn(() => ({
-              eq: jest.fn(() => consultarActividades()),
-            })),
-          })),
+        // Mock encadenable: select -> eq -> order.
+        const consulta = {
+          select: jest.fn(() => consulta),
+          eq: jest.fn(() => consulta),
+          order: jest.fn(() => consulta),
+          then: (resolve, reject) =>
+            Promise.resolve({
+              data: actividades,
+              error: null,
+            }).then(resolve, reject),
         };
+
+        return consulta;
       }
 
       throw new Error(`Tabla inesperada: ${tabla}`);
@@ -93,8 +83,8 @@ describe('RF25 — Finalización automática de atención', () => {
 
   test('CP01: finaliza si todas las actividades están Completada', async () => {
     actividades = [
-      { actividad_id: 1, estado: 'Completada' },
-      { actividad_id: 2, estado: 'Completada' },
+      { actividad_id: 1, estado: 'Completada', eliminado: false },
+      { actividad_id: 2, estado: 'Completada', eliminado: false },
     ];
 
     const resultado = await finalizarAtencionSiCorresponde(1);
@@ -105,8 +95,8 @@ describe('RF25 — Finalización automática de atención', () => {
 
   test('CP02: finaliza con actividades Completada y No realizada', async () => {
     actividades = [
-      { actividad_id: 1, estado: 'Completada' },
-      { actividad_id: 2, estado: 'No realizada' },
+      { actividad_id: 1, estado: 'Completada', eliminado: false },
+      { actividad_id: 2, estado: 'No realizada', eliminado: false },
     ];
 
     const resultado = await finalizarAtencionSiCorresponde(1);
@@ -117,8 +107,8 @@ describe('RF25 — Finalización automática de atención', () => {
 
   test('CP03: no finaliza si hay actividades Pendiente', async () => {
     actividades = [
-      { actividad_id: 1, estado: 'Completada' },
-      { actividad_id: 2, estado: 'Pendiente' },
+      { actividad_id: 1, estado: 'Completada', eliminado: false },
+      { actividad_id: 2, estado: 'Pendiente', eliminado: false },
     ];
 
     const resultado = await finalizarAtencionSiCorresponde(1);
@@ -129,7 +119,7 @@ describe('RF25 — Finalización automática de atención', () => {
 
   test('CP04: no finaliza si hay actividades En proceso', async () => {
     actividades = [
-      { actividad_id: 1, estado: 'En proceso' },
+      { actividad_id: 1, estado: 'En proceso', eliminado: false },
     ];
 
     const resultado = await finalizarAtencionSiCorresponde(1);
@@ -153,8 +143,9 @@ describe('RF25 — Finalización automática de atención', () => {
 
     const resultado = await finalizarAtencionSiCorresponde(1);
 
-    expect(resultado.finalizada).toBe(true);
     expect(resultado.modificada).toBe(false);
+    expect(atencion.estado).toBe('Finalizada');
+    expect(atencion.fecha_fin).toBe('2026-10-27T11:00:00.000Z');
     expect(actualizarAtencion).not.toHaveBeenCalled();
   });
 });

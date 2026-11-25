@@ -1,7 +1,7 @@
 
 import { StyleSheet } from 'react-native';
 
-const C = {
+export const C = {
   primario: '#187C72',
   primarioOscuro: '#12665E',
   fondo: '#F5F8F8',

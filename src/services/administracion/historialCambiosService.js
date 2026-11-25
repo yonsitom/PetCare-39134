@@ -16,7 +16,6 @@ import {
   obtenerHistorialCambios,
   obtenerDetalleHistorial,
 } from "../../dao/administracion/historialCambiosDAO";
-import { logger } from '../../utils/logger';
 
 // ============================================================
 // MENSAJES DEL RF50
@@ -183,7 +182,7 @@ export const consultarHistorialCambios = async (filtros = {}) => {
     };
   } catch (error) {
     // CP04: controlar errores técnicos.
-    logger.error("Error en RF50 al consultar el historial:", error);
+    console.error("Error en RF50 al consultar el historial:", error);
 
     return {
       correcto: false,
@@ -241,7 +240,7 @@ export const consultarDetalleHistorial = async (historialCambioId) => {
       datos: registro,
     };
   } catch (error) {
-    logger.error("Error en RF50 al consultar el detalle:", error);
+    console.error("Error en RF50 al consultar el detalle:", error);
 
     return {
       correcto: false,

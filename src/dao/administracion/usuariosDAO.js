@@ -1,27 +1,17 @@
+
 /**
  * PETCARE - DAO DE USUARIOS
  *
- * Requisitos:
- * - CUS44: consultar usuarios.
- * - CUS45: actualizar el estado de una cuenta.
+ * CUS44: consultar usuarios.
+ * CUS45: actualizar el estado de una cuenta.
  *
- * MVC / DAO:
- * Este archivo representa el acceso a datos de la entidad Usuario.
- * La vista no debe ejecutar directamente la actualización del estado.
- *
- * DIAGRAMA DE SECUENCIAS CUS45:
- * Control/Servicio -> Entidad/DAO -> tabla perfiles de Supabase.
- *
- * Las decisiones de negocio y el tratamiento de cancelaciones
- * corresponden a usuariosService.js.
+ * DAO: acceso a datos de la entidad Usuario en Supabase.
  */
 
 import { supabase } from '../../services/supabase';
 
 /**
- * CUS44: consulta los perfiles registrados, ordenados por fecha.
- *
- * @returns {Promise<Array>} Lista de perfiles.
+ * CUS44: consulta los perfiles registrados.
  */
 export async function consultarUsuariosDAO() {
   const { data, error } = await supabase
@@ -39,22 +29,31 @@ export async function consultarUsuariosDAO() {
     .order('fecha_registro', { ascending: false });
 
   if (error) {
+    console.error('[CUS44] Error consultando perfiles:', error);
     throw error;
   }
 
-  return data || [];
+  const usuarios = data || [];
+
+  const conteosEstado = usuarios.reduce((conteos, usuario) => {
+    const estado = String(usuario.estado_cuenta ?? 'NULL');
+    conteos[estado] = (conteos[estado] || 0) + 1;
+    return conteos;
+  }, {});
+
+  console.log('========== DIAGNÓSTICO CUS44 ==========');
+  console.log('Total de usuarios recibidos:', usuarios.length);
+  console.log('Conteo por estado original:', conteosEstado);
+  console.log('Estados recibidos:', usuarios.map(
+    (usuario) => usuario.estado_cuenta
+  ));
+  console.log('=======================================');
+
+  return usuarios;
 }
 
 /**
  * CUS45: actualiza el estado de una cuenta.
- *
- * @param {string} perfilId Identificador del usuario.
- * @param {'Activo'|'Inactivo'} nuevoEstado Estado solicitado.
- * @returns {Promise<Object|null>} Perfil actualizado o null si
- * Supabase no devuelve ninguna fila.
- *
- * El Administrador confirma la operación en la vista.
- * El servicio valida la solicitud y delega la persistencia aquí.
  */
 export async function actualizarEstadoCuentaDAO(
   perfilId,

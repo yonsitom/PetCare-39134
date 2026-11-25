@@ -7,7 +7,7 @@ import FichaPropietario from '../../app/propietarios/fichaPropietario';
 import {
   consultarPropietarioPorId,
   consultarMascotasPorPropietario,
-} from '../../dao/propietarioDAO';
+} from '../../dao/propietario/propietarioDAO';
 
 jest.mock('expo-router', () => ({
   router: {
@@ -49,7 +49,7 @@ jest.mock('../../components/layout/MenuLateralDerecho', () => {
   };
 });
 
-jest.mock('../../dao/propietarioDAO', () => ({
+jest.mock('../../dao/propietario/propietarioDAO', () => ({
   consultarPropietarioPorId: jest.fn(),
   consultarMascotasPorPropietario: jest.fn(),
 }));

@@ -5,22 +5,25 @@ import {
   guardarDatosConsulta,
   consultarAtencionPorId,
   consultarDatosConsulta,
-} from '../../dao/atencionesDAO';
+} from '../../dao/atencion/atencionesDAO';
 
 import {
   programarCita as programarCitaServicio,
   cancelarCita as cancelarCitaServicio,
-} from '../../services/citasServicio';
+} from '../../services/servicios/citasServicio';
+
+import {
+  obtenerDatosConsultaServicio,
+} from '../../services/atencion/actividadesServicio';
 
 import {
   consultarActividadesPorAtencion,
   validarQueNoExistaActividadAbierta,
-} from '../../dao/actividadesDAO';
+} from '../../dao/actividades/actividadesDAO';
 
 import {
   cambiarEstadoActividadServicio,
-} from '../../services/actividadesServicio';
-import { logger } from '../../utils/logger';
+} from '../../services/atencion/actividadesServicio';
 /**
  * RF22: listar mascotas disponibles para registrar una atención.
  */
@@ -199,7 +202,9 @@ export async function obtenerDetalleCompletoAtencion(atencionId) {
 }
 
 /**
- * Consultar los datos clínicos de una actividad.
+ * RF24: consultar los datos clínicos de una actividad Consulta.
+ *
+ * El controlador delega la recuperación al servicio.
  */
 export async function obtenerDatosConsulta(actividadId) {
   if (
@@ -208,13 +213,12 @@ export async function obtenerDatosConsulta(actividadId) {
     String(actividadId).trim() === ''
   ) {
     throw new Error(
-      'No se indicó la actividad que desea consultar.'
+      'No se indicó la actividad de consulta.'
     );
   }
 
-  return consultarDatosConsulta(actividadId);
+  return obtenerDatosConsultaServicio(actividadId);
 }
-
 /**
  * Compatibilidad con componentes que usan crearAtencion(datos).
  *
@@ -305,7 +309,7 @@ export async function verificarEstadoActividadesAtencion(atencionId) {
   try {
     actividades = await consultarActividadesPorAtencion(atencionId);
   } catch (error) {
-    logger.error(
+    console.error(
       'RF26: no se pudo verificar el estado de las actividades:',
       error?.message ?? error
     );

@@ -24,7 +24,7 @@ jest.mock('../../services/supabase', () => ({
 }));
 
 import { supabase } from '../../services/supabase';
-import { cambiarContrasena } from '../../services/autenticacion';
+import { cambiarContrasena } from '../../services/autentificacion/autenticacion';
 const DATOS_VALIDOS = {
   contrasenaActual: 'Vet@2026',
   nuevaContrasena: 'Nueva@2026',

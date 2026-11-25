@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -13,6 +14,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 
+import { supabase } from '../../services/supabase';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 import RegistrarPropietario from '../../components/propietarios/RegistrarPropietario';
@@ -20,8 +22,7 @@ import RegistrarPropietario from '../../components/propietarios/RegistrarPropiet
 import {
   consultarPropietarios,
   consultarMascotasPorPropietario,
-} from '../../dao/propietarioDAO';
-import { logger } from '../../utils/logger';
+} from '../../dao/propietario/propietarioDAO';
 
 const C = {
   primario: '#187C72',
@@ -48,6 +49,66 @@ export default function PantallaPropietarios() {
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [mensajeExito, setMensajeExito] = useState('');
 
+  // Datos reales del usuario autenticado.
+  const [nombreUsuario, setNombreUsuario] = useState('');
+  const [rolUsuario, setRolUsuario] = useState('');
+
+  /**
+   * Consulta el nombre, rol y estado de la cuenta
+   * del usuario autenticado.
+   */
+  const cargarPerfil = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+        error: errorUsuario,
+      } = await supabase.auth.getUser();
+
+      if (errorUsuario || !user) {
+        router.replace('/');
+        return;
+      }
+
+      const { data: perfil, error } = await supabase
+        .from('perfiles')
+        .select('nombre_completo, rol, estado_cuenta')
+        .eq('perfil_id', user.id)
+        .maybeSingle();
+
+      if (error || !perfil) {
+        console.error('Error al consultar perfil:', error);
+        Alert.alert(
+          'Error',
+          'No se pudo cargar la información de tu perfil.'
+        );
+        return;
+      }
+
+      if (
+        String(perfil.estado_cuenta || '').toLowerCase() !==
+        'activo'
+      ) {
+        Alert.alert(
+          'Cuenta inactiva',
+          'Tu cuenta no se encuentra activa.'
+        );
+        router.replace('/');
+        return;
+      }
+
+      setNombreUsuario(
+        perfil.nombre_completo ||
+        user.user_metadata?.nombre_completo ||
+        user.email?.split('@')[0] ||
+        'Usuario'
+      );
+
+      setRolUsuario(perfil.rol || '');
+    } catch (error) {
+      console.error('Error al cargar perfil:', error);
+    }
+  }, []);
+
   // Consulta propietarios y cuenta sus mascotas.
   const cargarPropietarios = useCallback(async () => {
     setCargando(true);
@@ -72,7 +133,7 @@ export default function PantallaPropietarios() {
               ? mascotas.length
               : 0;
           } catch (error) {
-            logger.error(
+            console.error(
               `Error al consultar mascotas del propietario ${id}:`,
               error
             );
@@ -83,7 +144,7 @@ export default function PantallaPropietarios() {
 
       setCantidadesMascotas(cantidades);
     } catch (error) {
-      logger.error('Error al cargar propietarios:', error);
+      console.error('Error al cargar propietarios:', error);
       setErrorCarga(
         'No se pudo cargar la lista de propietarios. Intente nuevamente.'
       );
@@ -93,8 +154,9 @@ export default function PantallaPropietarios() {
   }, []);
 
   useEffect(() => {
+    cargarPerfil();
     cargarPropietarios();
-  }, [cargarPropietarios]);
+  }, [cargarPerfil, cargarPropietarios]);
 
   // Filtra por nombre, apellido, DNI, teléfono o correo.
   const propietariosFiltrados = propietarios.filter((propietario) => {
@@ -141,22 +203,17 @@ export default function PantallaPropietarios() {
     setMostrarFormulario(true);
   };
 
-const propietarioRegistrado = () => {
-  // Cierra el formulario después de confirmar que se guardó.
-  setMostrarFormulario(false);
+  const propietarioRegistrado = () => {
+    setMostrarFormulario(false);
+    setMensajeExito('');
+    setBusqueda('');
 
-  // Limpia el mensaje anterior y muestra uno solo de éxito.
-  setMensajeExito('');
-  setBusqueda('');
+    cargarPropietarios();
 
-  // Actualiza el listado después del registro.
-  cargarPropietarios();
-
-  // Muestra la confirmación final una sola vez.
-  setMensajeExito(
-    'Los datos del propietario se registraron correctamente.'
-  );
-};
+    setMensajeExito(
+      'Los datos del propietario se registraron correctamente.'
+    );
+  };
 
   const volverALista = () => setMostrarFormulario(false);
 
@@ -172,8 +229,6 @@ const propietarioRegistrado = () => {
         onAbrirNotificaciones={() => {}}
       />
 
-      {/* Este ScrollView contiene tarjetas creadas con map().
-          No se coloca ningún FlatList dentro de él. */}
       <ScrollView
         style={estilos.scroll}
         contentContainerStyle={estilos.contenidoScroll}
@@ -272,15 +327,20 @@ const propietarioRegistrado = () => {
               )}
             </View>
 
-{mensajeExito !== '' && (
-  <View style={estilos.mensajeExito}>
-    <Text style={estilos.textoExito}>{mensajeExito}</Text>
-    <TouchableOpacity onPress={() => setMensajeExito('')}>
-      {/* Conserva aquí el contenido actual del botón para cerrar */}
-    </TouchableOpacity>
-  </View>
-)}
+            {mensajeExito !== '' && (
+              <View style={estilos.mensajeExito}>
+                <Text style={estilos.textoExito}>
+                  {mensajeExito}
+                </Text>
 
+                <TouchableOpacity
+                  onPress={() => setMensajeExito('')}
+                  accessibilityLabel="Cerrar mensaje"
+                >
+                  <Text style={estilos.cerrarMensaje}>×</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {!cargando && !errorCarga && (
               <View style={estilos.resumen}>
@@ -308,11 +368,14 @@ const propietarioRegistrado = () => {
             {!cargando && errorCarga !== '' && (
               <View style={estilos.estado}>
                 <Text style={estilos.textoError}>{errorCarga}</Text>
+
                 <TouchableOpacity
                   style={estilos.botonReintentar}
                   onPress={cargarPropietarios}
                 >
-                  <Text style={estilos.textoReintentar}>Reintentar</Text>
+                  <Text style={estilos.textoReintentar}>
+                    Reintentar
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -373,42 +436,40 @@ const propietarioRegistrado = () => {
                   );
                 })}
 
-                
-{propietariosFiltrados.length === 0 && (
-  <View style={estilos.vacio}>
-    <Text style={estilos.iconoVacio}>⌕</Text>
+                {propietariosFiltrados.length === 0 && (
+                  <View style={estilos.vacio}>
+                    <Text style={estilos.iconoVacio}>⌕</Text>
 
-    <Text style={estilos.tituloVacio}>
-      {propietarios.length === 0 && !busqueda.trim()
-        ? 'No hay propietarios registrados.'
-        : 'No se encontraron propietarios'}
-    </Text>
+                    <Text style={estilos.tituloVacio}>
+                      {propietarios.length === 0 && !busqueda.trim()
+                        ? 'No hay propietarios registrados.'
+                        : 'No se encontraron propietarios'}
+                    </Text>
 
-    {propietarios.length === 0 && !busqueda.trim() ? (
-      <Text style={estilos.textoVacio}>
-        Aún no hay propietarios registrados en el sistema.
-      </Text>
-    ) : (
-      <>
-        <Text style={estilos.textoVacio}>
-          Prueba con otro nombre, DNI, teléfono o correo.
-        </Text>
+                    {propietarios.length === 0 && !busqueda.trim() ? (
+                      <Text style={estilos.textoVacio}>
+                        Aún no hay propietarios registrados en el sistema.
+                      </Text>
+                    ) : (
+                      <>
+                        <Text style={estilos.textoVacio}>
+                          Prueba con otro nombre, DNI, teléfono o correo.
+                        </Text>
 
-        {busqueda !== '' && (
-          <TouchableOpacity
-            style={estilos.botonReintentar}
-            onPress={() => setBusqueda('')}
-          >
-            <Text style={estilos.textoReintentar}>
-              Limpiar búsqueda
-            </Text>
-          </TouchableOpacity>
-        )}
-      </>
-    )}
-  </View>
-)}
-
+                        {busqueda !== '' && (
+                          <TouchableOpacity
+                            style={estilos.botonReintentar}
+                            onPress={() => setBusqueda('')}
+                          >
+                            <Text style={estilos.textoReintentar}>
+                              Limpiar búsqueda
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    )}
+                  </View>
+                )}
               </View>
             )}
           </>
@@ -418,8 +479,8 @@ const propietarioRegistrado = () => {
       <MenuLateralDerecho
         visible={menuAbierto}
         onCerrar={() => setMenuAbierto(false)}
-        nombreUsuario="Usuario"
-        rolUsuario="Asistente"
+        nombreUsuario={nombreUsuario}
+        rolUsuario={rolUsuario}
       />
     </SafeAreaView>
   );

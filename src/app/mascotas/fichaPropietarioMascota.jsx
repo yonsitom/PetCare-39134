@@ -1,4 +1,3 @@
-
 /*
  * Archivo: src/app/mascotas/fichaPropietarioMascota.jsx
  *
@@ -7,12 +6,14 @@
  * - Consultar la información directamente desde Supabase.
  * - Mantener la navegación dentro del módulo Mascotas.
  * - Mostrar estados de carga y mensajes de error.
- * - Colocar el botón de regreso a la izquierda del encabezado.
+ * - Presentar el botón de regreso alineado con el encabezado.
+ * - Mostrar los datos principales del propietario en una tarjeta horizontal.
  *
- * CAMBIOS:
- * - La flecha para regresar está a la izquierda del título.
- * - Se eliminó el botón inferior "Volver a la ficha de la mascota".
- * - Se conserva el botón "Volver a la mascota" en caso de error.
+ * ARQUITECTURA:
+ * Vista -> Supabase.
+ *
+ * NOTA:
+ * La consulta y la navegación se mantienen sin cambios funcionales.
  */
 
 import React, {
@@ -43,7 +44,6 @@ import { supabase } from '../../services/supabase';
 
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
-import { logger } from '../../utils/logger';
 
 // ======================================================
 // PALETA DE COLORES PETCARE
@@ -66,7 +66,6 @@ const C = {
 // FUNCIONES AUXILIARES
 // ======================================================
 
-// Evita mostrar valores vacíos en la interfaz.
 function mostrarDato(valor) {
   if (
     valor === null ||
@@ -79,7 +78,6 @@ function mostrarDato(valor) {
   return String(valor);
 }
 
-// Construye el nombre completo del propietario.
 function obtenerNombreCompleto(propietario) {
   if (!propietario) {
     return 'Propietario';
@@ -94,7 +92,6 @@ function obtenerNombreCompleto(propietario) {
     .trim() || 'Propietario';
 }
 
-// Obtiene la inicial para el avatar.
 function obtenerInicial(propietario) {
   const nombre = obtenerNombreCompleto(propietario);
 
@@ -121,7 +118,6 @@ function Campo({ etiqueta, valor }) {
 // ======================================================
 
 export default function FichaPropietarioMascotaScreen() {
-  // Parámetros recibidos desde la ficha de la mascota.
   const parametros = useLocalSearchParams();
 
   const propietarioId = Array.isArray(parametros.propietarioId)
@@ -171,7 +167,7 @@ export default function FichaPropietarioMascotaScreen() {
           .single();
 
         if (errorPerfil) {
-          logger.error(
+          console.error(
             'Error al consultar el perfil:',
             errorPerfil.message
           );
@@ -187,7 +183,7 @@ export default function FichaPropietarioMascotaScreen() {
           setRolUsuario(data.rol || '');
         }
       } catch (err) {
-        logger.error(
+        console.error(
           'Error al cargar el perfil:',
           err
         );
@@ -247,7 +243,7 @@ export default function FichaPropietarioMascotaScreen() {
 
       setPropietario(data);
     } catch (err) {
-      logger.error(
+      console.error(
         'Error al consultar propietario:',
         err
       );
@@ -308,7 +304,7 @@ export default function FichaPropietarioMascotaScreen() {
       setMenuAbierto(false);
       router.replace('/');
     } catch (err) {
-      logger.error(
+      console.error(
         'Error al cerrar sesión:',
         err
       );
@@ -460,7 +456,7 @@ export default function FichaPropietarioMascotaScreen() {
         contentContainerStyle={styles.contenido}
         showsVerticalScrollIndicator={false}
       >
-        {/* Botón de regreso a la izquierda del título. */}
+        {/* Encabezado ordenado con botón de regreso. */}
         <View style={styles.encabezadoPagina}>
           <TouchableOpacity
             style={styles.botonVolver}
@@ -487,7 +483,7 @@ export default function FichaPropietarioMascotaScreen() {
           </View>
         </View>
 
-        {/* Tarjeta principal de identificación. */}
+        {/* Tarjeta horizontal de identificación del propietario. */}
         <View style={styles.tarjetaPrincipal}>
           <View style={styles.avatar}>
             <Text style={styles.textoAvatar}>
@@ -495,18 +491,20 @@ export default function FichaPropietarioMascotaScreen() {
             </Text>
           </View>
 
-          <Text style={styles.nombre}>
-            {obtenerNombreCompleto(propietario)}
-          </Text>
-
-          <Text style={styles.documento}>
-            DNI: {mostrarDato(propietario.documento_identidad)}
-          </Text>
-
-          <View style={styles.etiquetaRegistrado}>
-            <Text style={styles.textoRegistrado}>
-              Propietario registrado
+          <View style={styles.informacionPrincipal}>
+            <Text style={styles.nombre}>
+              {obtenerNombreCompleto(propietario)}
             </Text>
+
+            <Text style={styles.documento}>
+              DNI: {mostrarDato(propietario.documento_identidad)}
+            </Text>
+
+            <View style={styles.etiquetaRegistrado}>
+              <Text style={styles.textoRegistrado}>
+                Propietario registrado
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -549,8 +547,6 @@ export default function FichaPropietarioMascotaScreen() {
           </View>
         </View>
 
-        {/* Se eliminó el botón inferior para regresar a la mascota. */}
-
         <Text style={styles.pie}>
           Información consultada desde el registro del propietario.
         </Text>
@@ -590,23 +586,54 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
   },
 
+  // ----------------------------------------------------
+  // ENCABEZADO Y BOTÓN DE REGRESO
+  // ----------------------------------------------------
+
   encabezadoPagina: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    marginBottom: 22,
     gap: 12,
-    marginBottom: 20,
+  },
+
+  botonVolver: {
+    width: 42,
+    height: 42,
+    flexShrink: 0,
+    backgroundColor: C.blanco,
+    borderWidth: 1,
+    borderColor: C.borde,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 1,
+    shadowColor: '#000000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+
+  flecha: {
+    color: C.primario,
+    fontSize: 32,
+    lineHeight: 36,
+    marginTop: -3,
   },
 
   textosEncabezado: {
     flex: 1,
     minWidth: 0,
-    paddingTop: 1,
+    justifyContent: 'center',
   },
 
   migas: {
     color: C.secundario,
     fontSize: 11,
-    marginBottom: 7,
+    marginBottom: 5,
   },
 
   titulo: {
@@ -619,81 +646,88 @@ const styles = StyleSheet.create({
     color: C.secundario,
     fontSize: 12,
     lineHeight: 18,
-    marginTop: 5,
+    marginTop: 4,
   },
 
-  // Botón de regreso situado a la izquierda del encabezado.
-  botonVolver: {
-    width: 42,
-    height: 42,
-    marginTop: 2,
-    backgroundColor: C.blanco,
-    borderWidth: 1,
-    borderColor: C.borde,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  flecha: {
-    color: C.primario,
-    fontSize: 33,
-    lineHeight: 37,
-    marginTop: -3,
-  },
+  // ----------------------------------------------------
+  // TARJETA PRINCIPAL DEL PROPIETARIO
+  // ----------------------------------------------------
 
   tarjetaPrincipal: {
+    flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: C.blanco,
     borderWidth: 1,
     borderColor: C.borde,
-    borderRadius: 17,
-    padding: 23,
+    borderRadius: 16,
+    padding: 17,
     marginBottom: 24,
+    gap: 15,
+    elevation: 1,
+    shadowColor: '#000000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
   },
 
   avatar: {
-    width: 66,
-    height: 66,
-    borderRadius: 21,
+    width: 58,
+    height: 58,
+    flexShrink: 0,
+    borderRadius: 17,
     backgroundColor: C.verdeFondo,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 13,
   },
 
   textoAvatar: {
     color: C.primario,
-    fontSize: 27,
+    fontSize: 25,
     fontWeight: '800',
+  },
+
+  informacionPrincipal: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
   },
 
   nombre: {
     color: C.texto,
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '800',
-    textAlign: 'center',
+    textAlign: 'left',
   },
 
   documento: {
     color: C.secundario,
     fontSize: 13,
-    marginTop: 7,
+    marginTop: 5,
+    textAlign: 'left',
   },
 
   etiquetaRegistrado: {
     backgroundColor: C.verdeFondo,
     borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    marginTop: 13,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 9,
+    alignSelf: 'flex-start',
   },
 
   textoRegistrado: {
     color: C.primarioOscuro,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
+
+  // ----------------------------------------------------
+  // INFORMACIÓN DE CONTACTO
+  // ----------------------------------------------------
 
   seccion: {
     marginBottom: 22,
@@ -735,6 +769,10 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
 
+  // ----------------------------------------------------
+  // PIE DE PÁGINA
+  // ----------------------------------------------------
+
   pie: {
     color: C.secundario,
     fontSize: 11,
@@ -746,6 +784,10 @@ const styles = StyleSheet.create({
   espacioFinal: {
     height: 28,
   },
+
+  // ----------------------------------------------------
+  // ESTADOS DE CARGA Y ERROR
+  // ----------------------------------------------------
 
   centrado: {
     flex: 1,

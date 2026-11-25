@@ -40,14 +40,15 @@ import {
 import {
   filtrarAtencionesPorEstado,
   obtenerFiltroEstadoInicial,
-} from '../../services/atencionesFiltroServicio';
+} from '../../services/atencion/atencionesFiltroServicio';
 
-import { consultarPerfilPorId } from '../../dao/perfilDAO';
+import { consultarPerfilPorId } from '../../dao/autentificacion/perfilDAO';
 import { supabase } from '../../services/supabase';
 
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
-import { logger } from '../../utils/logger';
+
+
 const FILTROS = [
   { etiqueta: 'Todas', valor: 'Todas' },
   { etiqueta: 'Activas', valor: 'Activa' },
@@ -224,7 +225,7 @@ export default function Atenciones() {
 
       setAtenciones(lista);
     } catch (error) {
-      logger.error('Error al cargar las atenciones:', error);
+      console.error('Error al cargar las atenciones:', error);
       setErrorCarga(true);
 
       Alert.alert(
@@ -260,7 +261,7 @@ export default function Atenciones() {
       setNombreUsuario(perfil?.nombre_completo ?? '');
       setRolUsuario(perfil?.rol ?? '');
     } catch (errorPerfil) {
-      logger.error(
+      console.error(
         'Error al cargar el perfil del usuario:',
         errorPerfil
       );
@@ -329,10 +330,10 @@ export default function Atenciones() {
         return;
       }
 
-      router.push({
-        pathname: '/detalleAtencion',
-        params: { atencionId: String(id) },
-      });
+router.push({
+  pathname: '/atenciones/detalleAtencion',
+  params: { atencionId: String(id) },
+});
     },
     [router]
   );
@@ -363,7 +364,7 @@ router.push('/atenciones/nuevaAtencion');
       setMenuAbierto(false);
       router.replace('/');
     } catch (error) {
-      logger.error('Error al cerrar sesión:', error);
+      console.error('Error al cerrar sesión:', error);
 
       Alert.alert(
         'No se pudo cerrar la sesión',

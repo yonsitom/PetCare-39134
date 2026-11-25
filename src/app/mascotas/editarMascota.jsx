@@ -1,18 +1,22 @@
-
-/*
- * Archivo: src/app/mascotas/editarMascota.jsx
+/**
+ * ======================================================
+ * PETCARE - EDITAR MASCOTA
+ * ======================================================
  *
- * RF18 - Modificar la información registrada de una mascota.
+ * RF18: Modificar la información registrada de una mascota.
  *
  * Responsabilidades:
- * - Cargar el perfil y los datos de la mascota.
+ * - Cargar el perfil del usuario.
+ * - Consultar los datos de la mascota.
+ * - Validar los cambios.
  * - Solicitar confirmación antes de guardar.
  * - Actualizar mediante el DAO.
- * - Mostrar mensajes funcionales sin exponer errores técnicos.
+ * - Navegar a la ficha después de actualizar correctamente.
  * - Descartar cambios al cancelar.
  *
  * Arquitectura:
- * Vista (React Native) -> DAO -> Supabase.
+ * Vista -> Validaciones -> DAO -> Supabase.
+ * ======================================================
  */
 
 import React, {
@@ -48,25 +52,18 @@ import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 import {
   actualizarMascota,
   consultarMascotaPorId,
-} from '../../dao/mascotaDAO';
+} from '../../dao/mascotas/mascotaDAO';
 
 import {
   validarDatosEdicionMascota,
   obtenerMensajeErrorEdicionMascota,
 } from '../../utils/validacionesEdicionMascota';
-import { logger } from '../../utils/logger';
 
 // ======================================================
 // MENSAJES RF18
 // ======================================================
 
 const MENSAJES = {
-  camposObligatorios:
-    'Complete los campos obligatorios para continuar.',
-
-  datosInvalidos:
-    'Verifique los datos ingresados e inténtelo nuevamente.',
-
   exito:
     'Los datos de la mascota fueron actualizados correctamente.',
 
@@ -80,17 +77,14 @@ const MENSAJES = {
 
 const C = {
   primario: '#187C72',
-  fondo: '#F3F7F7',
+  fondo: '#F5F8F8',
   blanco: '#FFFFFF',
   texto: '#243746',
   secundario: '#72818D',
-  borde: '#E1EAE8',
+  borde: '#DCE5E5',
   rojo: '#B42318',
   fondoError: '#FFF2F1',
   bordeError: '#F2C7C3',
-  verde: '#15803D',
-  fondoExito: '#F0FDF4',
-  bordeExito: '#BBF7D0',
 };
 
 // ======================================================
@@ -100,10 +94,9 @@ const C = {
 export default function EditarMascotaScreen() {
   const { numeroHistoria } = useLocalSearchParams();
 
-  const historia =
-    Array.isArray(numeroHistoria)
-      ? numeroHistoria[0]
-      : numeroHistoria;
+  const historia = Array.isArray(numeroHistoria)
+    ? numeroHistoria[0]
+    : numeroHistoria;
 
   const [mascota, setMascota] = useState(null);
 
@@ -111,18 +104,21 @@ export default function EditarMascotaScreen() {
   const [guardando, setGuardando] = useState(false);
 
   const [error, setError] = useState('');
-  const [mensajeExito, setMensajeExito] = useState('');
 
   const [datosPendientes, setDatosPendientes] = useState(null);
-  const [modalConfirmacionVisible, setModalConfirmacionVisible] =
-    useState(false);
+
+  const [
+    modalConfirmacionVisible,
+    setModalConfirmacionVisible,
+  ] = useState(false);
 
   const [menuAbierto, setMenuAbierto] = useState(false);
+
   const [nombreUsuario, setNombreUsuario] = useState('Usuario');
   const [rolUsuario, setRolUsuario] = useState('');
 
   // ====================================================
-  // 1. CARGAR PERFIL
+  // 1. CARGAR PERFIL DEL USUARIO
   // ====================================================
 
   useEffect(() => {
@@ -146,7 +142,7 @@ export default function EditarMascotaScreen() {
           .single();
 
         if (errorPerfil) {
-          logger.error(
+          console.error(
             'Error al consultar el perfil:',
             errorPerfil
           );
@@ -154,11 +150,17 @@ export default function EditarMascotaScreen() {
         }
 
         if (activo && data) {
-          setNombreUsuario(data.nombre_completo || 'Usuario');
+          setNombreUsuario(
+            data.nombre_completo || 'Usuario'
+          );
+
           setRolUsuario(data.rol || '');
         }
       } catch (err) {
-        logger.error('Error al cargar el perfil:', err);
+        console.error(
+          'Error al cargar el perfil:',
+          err
+        );
       }
     }
 
@@ -176,7 +178,9 @@ export default function EditarMascotaScreen() {
   const cargarMascota = useCallback(async () => {
     if (!historia) {
       setMascota(null);
-      setError('No se recibió el número de historia clínica.');
+      setError(
+        'No se recibió el número de historia clínica.'
+      );
       setCargando(false);
       return;
     }
@@ -184,23 +188,29 @@ export default function EditarMascotaScreen() {
     try {
       setCargando(true);
       setError('');
-      setMensajeExito('');
 
-      const resultado = await consultarMascotaPorId(historia);
+      const resultado = await consultarMascotaPorId(
+        historia
+      );
 
       setMascota(resultado || null);
 
       if (!resultado) {
-        setError('No se encontró la mascota que deseas editar.');
+        setError(
+          'No se encontró la mascota que deseas editar.'
+        );
       }
     } catch (err) {
-      logger.error(
+      console.error(
         'Error al cargar la mascota para editar:',
         err
       );
 
       setMascota(null);
-      setError('No se pudieron cargar los datos de la mascota.');
+
+      setError(
+        'No se pudieron cargar los datos de la mascota.'
+      );
     } finally {
       setCargando(false);
     }
@@ -217,9 +227,7 @@ export default function EditarMascotaScreen() {
   // ====================================================
 
   function volver() {
-    if (guardando) {
-      return;
-    }
+    if (guardando) return;
 
     if (router.canGoBack()) {
       router.back();
@@ -230,9 +238,10 @@ export default function EditarMascotaScreen() {
       router.replace({
         pathname: '/mascotas/fichaMascota',
         params: {
-          numeroHistoria: historia,
+          numeroHistoria: String(historia),
         },
       });
+
       return;
     }
 
@@ -241,21 +250,18 @@ export default function EditarMascotaScreen() {
 
   // ====================================================
   // 4. CANCELAR EDICIÓN
-  // CP04: descartar datos sin guardarlos
+  // CP04: DESCARTAR CAMBIOS
   // ====================================================
 
   function cancelarEdicion() {
-    if (guardando) {
-      return;
-    }
+    if (guardando) return;
 
     setModalConfirmacionVisible(false);
     setDatosPendientes(null);
     setError('');
-    setMensajeExito('');
 
-    // No se llama al DAO.
-    // Al salir, la base de datos conserva los datos originales.
+    // No se invoca el DAO.
+    // La información original permanece en Supabase.
     volver();
   }
 
@@ -264,14 +270,10 @@ export default function EditarMascotaScreen() {
   // ====================================================
 
   function solicitarConfirmacion(datos) {
-    if (guardando) {
-      return;
-    }
+    if (guardando) return;
 
     setError('');
-    setMensajeExito('');
 
-    // Validación específica de RF18 antes de abrir el modal.
     const resultado = validarDatosEdicionMascota(datos);
 
     if (!resultado.valido) {
@@ -284,13 +286,11 @@ export default function EditarMascotaScreen() {
   }
 
   // ====================================================
-  // 6. CANCELAR SOLO EL MODAL
+  // 6. CANCELAR CONFIRMACIÓN
   // ====================================================
 
   function cancelarConfirmacion() {
-    if (guardando) {
-      return;
-    }
+    if (guardando) return;
 
     setModalConfirmacionVisible(false);
     setDatosPendientes(null);
@@ -298,53 +298,75 @@ export default function EditarMascotaScreen() {
 
   // ====================================================
   // 7. ACTUALIZAR MASCOTA
-  // CP01 y CP05
+  // CP01 Y CP05
   // ====================================================
 
   async function confirmarGuardado() {
-    if (guardando || !datosPendientes || !historia) {
+    if (
+      guardando ||
+      !datosPendientes ||
+      !historia
+    ) {
       return;
     }
 
-    // Copiar los datos antes de iniciar la petición.
-    const datosParaGuardar = { ...datosPendientes };
+    const datosParaGuardar = {
+      ...datosPendientes,
+    };
+
+    // Validación final antes de solicitar la actualización.
+    const resultado = validarDatosEdicionMascota(
+      datosParaGuardar
+    );
+
+    if (!resultado.valido) {
+      setModalConfirmacionVisible(false);
+      setError(resultado.mensaje);
+      return;
+    }
 
     try {
       setGuardando(true);
       setError('');
-      setMensajeExito('');
       setModalConfirmacionVisible(false);
 
-      // El DAO es responsable de actualizar Supabase.
+      // RF18: el DAO ejecuta la actualización en Supabase.
       const mascotaActualizada = await actualizarMascota(
         historia,
         datosParaGuardar
       );
 
-      // La operación de actualización ya terminó correctamente.
-      // No hacemos depender el éxito de una segunda consulta.
-      if (mascotaActualizada) {
-        setMascota(mascotaActualizada);
-      } else {
-        setMascota((anterior) => ({
-          ...anterior,
-          ...datosParaGuardar,
-        }));
+      // Si el DAO no devuelve una mascota, no se considera
+      // confirmada la operación.
+      if (!mascotaActualizada) {
+        throw new Error(
+          'La actualización no devolvió el registro modificado.'
+        );
       }
 
+      setMascota(mascotaActualizada);
       setDatosPendientes(null);
 
-      setMensajeExito(MENSAJES.exito);
+      // La actualización terminó correctamente.
+      // Navegar automáticamente a la ficha de la mascota.
+      router.replace({
+        pathname: '/mascotas/fichaMascota',
+        params: {
+          numeroHistoria: String(
+            mascotaActualizada.numero_historia || historia
+          ),
+          exito: 'actualizada',
+        },
+      });
     } catch (err) {
-      // El detalle técnico solo queda en los registros de desarrollo.
-      logger.error(
+      console.error(
         'Error técnico al actualizar la mascota:',
         err
       );
 
-      // Mantener el estado original de la mascota en pantalla.
-      // No aplicar datosPendientes cuando falla la actualización.
-      const mensaje = obtenerMensajeErrorEdicionMascota(err);
+      const mensaje =
+        obtenerMensajeErrorEdicionMascota(err) ||
+        MENSAJES.errorActualizacion;
 
       setError(mensaje);
 
@@ -371,13 +393,17 @@ export default function EditarMascotaScreen() {
           'No se pudo cerrar la sesión',
           'Inténtalo nuevamente.'
         );
+
         return;
       }
 
       setMenuAbierto(false);
       router.replace('/');
     } catch (err) {
-      logger.error('Error al cerrar sesión:', err);
+      console.error(
+        'Error al cerrar sesión:',
+        err
+      );
 
       Alert.alert(
         'Error',
@@ -434,7 +460,7 @@ export default function EditarMascotaScreen() {
 
             <View style={styles.bloqueTitulo}>
               <Text style={styles.migas}>
-                MASCOTAS / EDICIÓN
+                Inicio / Mascotas / Edición
               </Text>
 
               <Text style={styles.titulo}>
@@ -449,6 +475,7 @@ export default function EditarMascotaScreen() {
 
           <View style={styles.alertaError}>
             <Text style={styles.iconoError}>!</Text>
+
             <Text style={styles.textoError}>
               {error || 'Mascota no encontrada.'}
             </Text>
@@ -466,6 +493,7 @@ export default function EditarMascotaScreen() {
         </View>
       ) : (
         <View style={styles.contenido}>
+          {/* ENCABEZADO DE PÁGINA */}
           <View style={styles.encabezadoPagina}>
             <TouchableOpacity
               style={styles.botonVolver}
@@ -480,7 +508,7 @@ export default function EditarMascotaScreen() {
 
             <View style={styles.bloqueTitulo}>
               <Text style={styles.migas}>
-                MASCOTAS / EDICIÓN
+                Inicio / Mascotas / Edición
               </Text>
 
               <Text style={styles.titulo}>
@@ -496,30 +524,14 @@ export default function EditarMascotaScreen() {
           {!!error && (
             <View style={styles.alertaError}>
               <Text style={styles.iconoError}>!</Text>
+
               <Text style={styles.textoError}>
                 {error}
               </Text>
             </View>
           )}
 
-          {!!mensajeExito && (
-            <View style={styles.alertaExito}>
-              <View style={styles.iconoExito}>
-                <Text style={styles.textoIconoExito}>✓</Text>
-              </View>
-
-              <View style={styles.contenidoExito}>
-                <Text style={styles.tituloExito}>
-                  ¡Actualización exitosa!
-                </Text>
-
-                <Text style={styles.textoExito}>
-                  {mensajeExito}
-                </Text>
-              </View>
-            </View>
-          )}
-
+          {/* FORMULARIO RF18 */}
           <View style={styles.areaFormulario}>
             <FormularioMascota
               modo="edicion"
@@ -534,7 +546,10 @@ export default function EditarMascotaScreen() {
         </View>
       )}
 
-      {/* Modal de confirmación de actualización */}
+      {/* =================================================
+          MODAL DE CONFIRMACIÓN
+      ================================================= */}
+
       <Modal
         visible={modalConfirmacionVisible}
         transparent
@@ -583,6 +598,10 @@ export default function EditarMascotaScreen() {
         </View>
       </Modal>
 
+      {/* =================================================
+          INDICADOR DE GUARDADO
+      ================================================= */}
+
       {guardando && (
         <View style={styles.capaCarga}>
           <View style={styles.tarjetaCarga}>
@@ -598,6 +617,7 @@ export default function EditarMascotaScreen() {
         </View>
       )}
 
+      {/* MENÚ LATERAL */}
       <MenuLateralDerecho
         visible={menuAbierto}
         onCerrar={() => setMenuAbierto(false)}
@@ -623,7 +643,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     paddingHorizontal: 18,
-    paddingTop: 16,
+    paddingTop: 14,
     paddingBottom: 0,
   },
 
@@ -635,26 +655,21 @@ const styles = StyleSheet.create({
   },
 
   botonVolver: {
-    width: 44,
-    height: 44,
+    width: 38,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: C.blanco,
     borderWidth: 1,
     borderColor: C.borde,
-    borderRadius: 13,
+    borderRadius: 11,
     marginRight: 12,
-    shadowColor: '#173B36',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
   },
 
   flechaVolver: {
     color: C.primario,
-    fontSize: 35,
-    lineHeight: 40,
+    fontSize: 31,
+    lineHeight: 36,
     marginTop: -3,
   },
 
@@ -664,18 +679,16 @@ const styles = StyleSheet.create({
   },
 
   migas: {
-    color: C.primario,
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1,
-    marginBottom: 4,
+    color: C.secundario,
+    fontSize: 11,
+    fontWeight: '500',
+    marginBottom: 8,
   },
 
   titulo: {
     color: C.texto,
-    fontSize: 23,
+    fontSize: 21,
     fontWeight: '800',
-    letterSpacing: -0.4,
   },
 
   subtitulo: {
@@ -754,50 +767,6 @@ const styles = StyleSheet.create({
     color: C.blanco,
     fontSize: 13,
     fontWeight: '700',
-  },
-
-  alertaExito: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: C.fondoExito,
-    borderColor: C.bordeExito,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-
-  iconoExito: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#DCFCE7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-
-  textoIconoExito: {
-    color: C.verde,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-
-  contenidoExito: {
-    flex: 1,
-  },
-
-  tituloExito: {
-    color: C.verde,
-    fontSize: 13,
-    fontWeight: '800',
-    marginBottom: 3,
-  },
-
-  textoExito: {
-    color: '#166534',
-    fontSize: 12,
-    lineHeight: 18,
   },
 
   fondoModal: {

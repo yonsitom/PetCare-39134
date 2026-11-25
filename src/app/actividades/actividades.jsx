@@ -1,5 +1,6 @@
 
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+
 import {
   ActivityIndicator,
   Alert,
@@ -9,32 +10,35 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+
+import {
+  router,
+  useFocusEffect,
+  useLocalSearchParams,
+} from 'expo-router';
 
 import { supabase } from '../../services/supabase';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
-import { logger } from '../../utils/logger';
 
-// Paleta visual de PetCare.
 const C = {
   fondo: '#F4F8F7',
   verde: '#12665E',
   verdeOscuro: '#104F49',
-  verdeClaro: '#E6F4EF',
+  verdeClaro: '#E1F3EC',
   texto: '#243746',
   secundario: '#718096',
   blanco: '#FFFFFF',
-  borde: '#E0EAE7',
+  borde: '#DCE8E5',
   naranja: '#FFF2D8',
   naranjaTexto: '#96620A',
   rojo: '#FCE8E8',
   rojoTexto: '#B42318',
 };
 
-// Únicos estados permitidos por los requisitos de PetCare.
 const ESTADOS = [
   'Todas',
   'Pendiente',
@@ -42,7 +46,6 @@ const ESTADOS = [
   'No realizada',
 ];
 
-// Convierte una fecha a un formato legible.
 function formatearFecha(fecha) {
   if (!fecha) return 'Sin fecha';
 
@@ -59,7 +62,6 @@ function formatearFecha(fecha) {
   });
 }
 
-// Convierte el nombre interno del tipo en una etiqueta legible.
 function formatearTipo(tipo) {
   const tipos = {
     Consulta: 'Consulta',
@@ -73,7 +75,6 @@ function formatearTipo(tipo) {
   return tipos[tipo] || tipo || 'Actividad';
 }
 
-// Devuelve el color correspondiente al estado.
 function obtenerEstiloEstado(estado) {
   switch (estado) {
     case 'Completada':
@@ -97,25 +98,117 @@ function obtenerEstiloEstado(estado) {
   }
 }
 
+function obtenerFechaOrden(actividad) {
+  const fecha = actividad.fecha_prevista || actividad.fecha_registro;
+
+  if (!fecha) return Number.MAX_SAFE_INTEGER;
+
+  const valor = new Date(fecha).getTime();
+
+  return Number.isNaN(valor)
+    ? Number.MAX_SAFE_INTEGER
+    : valor;
+}
+
+function ordenarActividades(lista) {
+  return [...lista].sort((a, b) => {
+    const diferencia =
+      obtenerFechaOrden(a) - obtenerFechaOrden(b);
+
+    if (diferencia !== 0) return diferencia;
+
+    return Number(a.actividad_id) - Number(b.actividad_id);
+  });
+}
+
+function normalizarTexto(valor) {
+  return String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function normalizarRelacion(relacion) {
+  if (Array.isArray(relacion)) {
+    return relacion[0] || null;
+  }
+
+  return relacion || null;
+}
+
 export default function ActividadesScreen() {
+  const parametros = useLocalSearchParams();
+
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [actividades, setActividades] = useState([]);
   const [filtro, setFiltro] = useState('Todas');
+  const [busqueda, setBusqueda] = useState('');
   const [cargando, setCargando] = useState(true);
   const [actualizando, setActualizando] = useState(false);
   const [errorCarga, setErrorCarga] = useState(false);
 
-  // Datos básicos del usuario que se completarán desde el perfil.
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [rolUsuario, setRolUsuario] = useState('');
-
-  // Evita solicitudes simultáneas de cierre de sesión.
   const [cerrandoSesion, setCerrandoSesion] = useState(false);
 
-  /**
-   * Carga las actividades que no han sido eliminadas.
-   * Consulta también la atención y la mascota asociadas.
-   */
+  // ==========================================================
+  // PERFIL DEL USUARIO ACTUAL
+  // ==========================================================
+
+  const cargarPerfilUsuario = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+        error: errorUsuario,
+      } = await supabase.auth.getUser();
+
+      if (errorUsuario) throw errorUsuario;
+
+      if (!user) {
+        setNombreUsuario('');
+        setRolUsuario('');
+        return;
+      }
+
+      const {
+        data: perfil,
+        error: errorPerfil,
+      } = await supabase
+        .from('perfiles')
+        .select('nombre_completo, rol')
+        .eq('perfil_id', user.id)
+        .maybeSingle();
+
+      if (errorPerfil) throw errorPerfil;
+
+      setNombreUsuario(perfil?.nombre_completo || '');
+      setRolUsuario(perfil?.rol || '');
+    } catch (error) {
+      console.error('Error al cargar perfil del usuario:', error);
+    }
+  }, []);
+
+  // ==========================================================
+  // FILTRO RECIBIDO POR PARÁMETROS
+  // ==========================================================
+
+  useEffect(() => {
+    const estadoRecibido = Array.isArray(parametros.estadoActividad)
+      ? parametros.estadoActividad[0]
+      : parametros.estadoActividad;
+
+    setFiltro(
+      ESTADOS.includes(estadoRecibido)
+        ? estadoRecibido
+        : 'Todas'
+    );
+  }, [parametros.estadoActividad]);
+
+  // ==========================================================
+  // CARGAR ACTIVIDADES, MASCOTAS Y RESPONSABLES
+  // ==========================================================
+
   const cargarActividades = useCallback(async (esActualizacion = false) => {
     if (esActualizacion) {
       setActualizando(true);
@@ -126,53 +219,81 @@ export default function ActividadesScreen() {
     setErrorCarga(false);
 
     try {
-      // Consulta las actividades vigentes.
-      const { data: datosActividades, error: errorActividades } =
-        await supabase
-          .from('actividades')
-          .select(`
-            actividad_id,
-            atencion_id,
-            tipo,
+      // ------------------------------------------------------
+      // 1. CONSULTAR ACTIVIDADES Y ATENCIONES
+      // ------------------------------------------------------
+
+      const {
+        data: datosActividades,
+        error: errorActividades,
+      } = await supabase
+        .from('actividades')
+        .select(`
+          actividad_id,
+          atencion_id,
+          tipo,
+          tipo_id,
+          estado,
+          fecha_prevista,
+          fecha_inicio,
+          fecha_fin,
+          fecha_completada,
+          observaciones,
+          fecha_registro,
+          creado_por,
+          motivo_no_realizada,
+          detalle,
+          eliminado,
+          tipos_actividad (
             tipo_id,
+            codigo,
+            nombre
+          ),
+          atenciones (
+            atencion_id,
             estado,
-            fecha_prevista,
+            numero_historia,
             fecha_inicio,
-            fecha_fin,
-            motivo_no_realizada,
-            observaciones,
-            fecha_registro,
-            detalle,
-            atenciones (
-              atencion_id,
-              estado,
-              numero_historia
-            )
-          `)
-          .eq('eliminado', false)
-          .order('fecha_registro', { ascending: false });
+            fecha_fin
+          )
+        `)
+        .eq('eliminado', false);
 
       if (errorActividades) {
         throw errorActividades;
       }
 
-      const listaActividades = datosActividades || [];
+      const lista = datosActividades || [];
 
-      // Obtiene los números de historia asociados a las atenciones.
+      // ------------------------------------------------------
+      // 2. OBTENER NÚMEROS DE HISTORIA
+      // ------------------------------------------------------
+
       const historias = [
         ...new Set(
-          listaActividades
-            .map((actividad) => actividad.atenciones?.numero_historia)
+          lista
+            .map((actividad) => {
+              const atencion = normalizarRelacion(
+                actividad.atenciones
+              );
+
+              return atencion?.numero_historia;
+            })
             .filter(Boolean)
         ),
       ];
 
+      // ------------------------------------------------------
+      // 3. CONSULTAR NOMBRES DE MASCOTAS
+      // ------------------------------------------------------
+
       let mascotasPorHistoria = {};
 
-      // Consulta los nombres de las mascotas sin asumir
-      // una relación anidada adicional en Supabase.
       if (historias.length > 0) {
-        const { data: mascotas, error: errorMascotas } = await supabase
+        const {
+          data: mascotas,
+          error: errorMascotas,
+        } = await supabase
           .from('mascotas')
           .select('numero_historia, nombre')
           .in('numero_historia', historias);
@@ -181,28 +302,113 @@ export default function ActividadesScreen() {
           throw errorMascotas;
         }
 
-        mascotasPorHistoria = (mascotas || []).reduce((resultado, mascota) => {
-          resultado[mascota.numero_historia] = mascota.nombre;
-          return resultado;
-        }, {});
+        mascotasPorHistoria = (mascotas || []).reduce(
+          (resultado, mascota) => {
+            resultado[mascota.numero_historia] =
+              mascota.nombre || 'Mascota no disponible';
+
+            return resultado;
+          },
+          {}
+        );
       }
 
-      // Combina la actividad con la información de su atención y mascota.
-      const actividadesPreparadas = listaActividades.map((actividad) => {
-        const historia = actividad.atenciones?.numero_historia;
+      // ------------------------------------------------------
+      // 4. OBTENER LOS ID DE LOS RESPONSABLES
+      // ------------------------------------------------------
+
+      const idsResponsables = [
+        ...new Set(
+          lista
+            .map((actividad) => actividad.creado_por)
+            .filter(Boolean)
+        ),
+      ];
+
+      // ------------------------------------------------------
+      // 5. CONSULTAR PERFILES DE LOS RESPONSABLES
+      // ------------------------------------------------------
+
+      let perfilesPorId = {};
+
+      if (idsResponsables.length > 0) {
+        const {
+          data: perfiles,
+          error: errorPerfiles,
+        } = await supabase
+          .from('perfiles')
+          .select(`
+            perfil_id,
+            nombre_completo,
+            rol
+          `)
+          .in('perfil_id', idsResponsables);
+
+        if (errorPerfiles) {
+          throw errorPerfiles;
+        }
+
+        perfilesPorId = (perfiles || []).reduce(
+          (resultado, perfil) => {
+            resultado[perfil.perfil_id] = perfil;
+            return resultado;
+          },
+          {}
+        );
+      }
+
+      // ------------------------------------------------------
+      // 6. PREPARAR LOS DATOS COMPLETOS
+      // ------------------------------------------------------
+
+      const preparadas = lista.map((actividad) => {
+        const atencion = normalizarRelacion(
+          actividad.atenciones
+        );
+
+        const tipoCatalogo = normalizarRelacion(
+          actividad.tipos_actividad
+        );
+
+        const historia = atencion?.numero_historia || '';
+
+        const responsable = actividad.creado_por
+          ? perfilesPorId[actividad.creado_por] || null
+          : null;
+
+        const mascota = historia
+          ? mascotasPorHistoria[historia] || null
+          : null;
 
         return {
           ...actividad,
-          nombre_mascota: historia
-            ? mascotasPorHistoria[historia] || 'Mascota no disponible'
-            : 'Mascota no disponible',
-          estado_atencion: actividad.atenciones?.estado || '',
+
+          // Tipo de actividad
+          tipos_actividad: tipoCatalogo || null,
+          tipo: tipoCatalogo?.nombre || actividad.tipo || null,
+          tipo_codigo: tipoCatalogo?.codigo || null,
+
+          // Datos de la mascota
+          nombre_mascota: mascota || 'Mascota no disponible',
+          numero_historia: historia,
+
+          // Datos de la atención
+          estado_atencion: atencion?.estado || '',
+          fecha_inicio_atencion: atencion?.fecha_inicio || null,
+          fecha_fin_atencion: atencion?.fecha_fin || null,
+
+          // Datos de quien registró la actividad
+          creador: responsable,
+          nombre_creador:
+            responsable?.nombre_completo || null,
+          rol_creador:
+            responsable?.rol || null,
         };
       });
 
-      setActividades(actividadesPreparadas);
+      setActividades(ordenarActividades(preparadas));
     } catch (error) {
-      logger.error('Error al cargar actividades:', error);
+      console.error('Error al cargar actividades:', error);
 
       setErrorCarga(true);
 
@@ -216,35 +422,124 @@ export default function ActividadesScreen() {
     }
   }, []);
 
-  // Carga inicial de las actividades.
-  useEffect(() => {
-    cargarActividades();
-  }, [cargarActividades]);
+  // ==========================================================
+  // RECARGAR AL REGRESAR A LA PANTALLA
+  // ==========================================================
 
-  // Filtra la lista sin volver a consultar la base de datos.
-  const actividadesFiltradas = actividades.filter((actividad) => {
-    if (filtro === 'Todas') return true;
+  useFocusEffect(
+    useCallback(() => {
+      cargarActividades();
+      cargarPerfilUsuario();
+    }, [cargarActividades, cargarPerfilUsuario])
+  );
 
-    return actividad.estado === filtro;
-  });
+  // ==========================================================
+  // FILTRAR ACTIVIDADES
+  // ==========================================================
 
-  // Calcula los totales para los indicadores.
-  const pendientes = actividades.filter(
-    (actividad) => actividad.estado === 'Pendiente'
-  ).length;
+  const actividadesFiltradas = useMemo(() => {
+    const termino = normalizarTexto(busqueda);
 
-  const completadas = actividades.filter(
-    (actividad) => actividad.estado === 'Completada'
-  ).length;
+    return actividades.filter((actividad) => {
+      const coincideEstado =
+        filtro === 'Todas' || actividad.estado === filtro;
 
-  const noRealizadas = actividades.filter(
-    (actividad) => actividad.estado === 'No realizada'
-  ).length;
+      if (!coincideEstado) return false;
 
-  /**
-   * RF07: Cerrar sesión.
-   * La confirmación se muestra únicamente desde MenuLateralDerecho.
-   */
+      if (!termino) return true;
+
+      const contenido = [
+        actividad.nombre_mascota,
+        actividad.tipo,
+        formatearTipo(actividad.tipo),
+        actividad.estado,
+        actividad.atencion_id,
+        actividad.numero_historia,
+        actividad.observaciones,
+        actividad.detalle,
+        actividad.nombre_creador,
+        actividad.rol_creador,
+      ]
+        .map(normalizarTexto)
+        .join(' ');
+
+      return contenido.includes(termino);
+    });
+  }, [actividades, filtro, busqueda]);
+
+  // ==========================================================
+  // ABRIR DETALLE CON TODOS LOS DATOS
+  // ==========================================================
+
+  function abrirDetalleActividad(actividad) {
+    router.push({
+      pathname: '/actividades/detalleActividad',
+      params: {
+        actividad: JSON.stringify(actividad),
+
+        actividad_id: String(
+          actividad.actividad_id || ''
+        ),
+
+        atencion_id: String(
+          actividad.atencion_id || ''
+        ),
+
+        numero_historia: String(
+          actividad.numero_historia || ''
+        ),
+
+        nombre_mascota: String(
+          actividad.nombre_mascota || ''
+        ),
+
+        atencion_estado: String(
+          actividad.estado_atencion || ''
+        ),
+
+        nombre_creador: String(
+          actividad.nombre_creador || ''
+        ),
+
+        rol_creador: String(
+          actividad.rol_creador || ''
+        ),
+
+        fecha_registro: String(
+          actividad.fecha_registro ||
+          actividad.created_at ||
+          ''
+        ),
+
+        fecha_prevista: String(
+          actividad.fecha_prevista || ''
+        ),
+
+        fecha_completada: String(
+          actividad.fecha_completada ||
+          actividad.fecha_fin ||
+          ''
+        ),
+      },
+    });
+  }
+
+  // ==========================================================
+  // REGRESAR
+  // ==========================================================
+
+  function regresar() {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/inicio');
+    }
+  }
+
+  // ==========================================================
+  // CERRAR SESIÓN
+  // ==========================================================
+
   async function cerrarSesion() {
     if (cerrandoSesion) return;
 
@@ -253,27 +548,32 @@ export default function ActividadesScreen() {
     try {
       const { error } = await supabase.auth.signOut();
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       setMenuAbierto(false);
       router.replace('/');
     } catch (error) {
-      // El menú lateral recibe el error y muestra su mensaje.
-      throw error;
+      console.error('Error al cerrar sesión:', error);
+
+      Alert.alert(
+        'Error',
+        'No se pudo cerrar la sesión. Intente nuevamente.'
+      );
     } finally {
       setCerrandoSesion(false);
     }
   }
 
-  // Muestra una notificación informativa.
   function abrirNotificaciones() {
     Alert.alert(
       'Notificaciones',
       'No tienes notificaciones nuevas.'
     );
   }
+
+  // ==========================================================
+  // VISTA
+  // ==========================================================
 
   return (
     <SafeAreaView style={estilos.contenedor}>
@@ -286,6 +586,7 @@ export default function ActividadesScreen() {
       <ScrollView
         contentContainerStyle={estilos.contenido}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={actualizando}
@@ -294,111 +595,117 @@ export default function ActividadesScreen() {
           />
         }
       >
-        {/* Ruta de navegación. */}
-        <View style={estilos.migas}>
-          <Text style={estilos.migaInicio}>Inicio</Text>
-          <Text style={estilos.separadorMigas}> / </Text>
-          <Text style={estilos.migaActual}>Actividades</Text>
-        </View>
-
-        {/* Título de la pantalla. */}
         <View style={estilos.encabezadoSeccion}>
+          <Pressable
+            onPress={regresar}
+            accessibilityRole="button"
+            accessibilityLabel="Regresar"
+            style={estilos.botonRegresar}
+          >
+            <Text style={estilos.flechaRegresar}>‹</Text>
+          </Pressable>
+
           <View style={estilos.textosSeccion}>
-            <Text style={estilos.tituloSeccion}>Actividades</Text>
+            <Text style={estilos.tituloSeccion}>
+              Actividades
+            </Text>
 
             <Text style={estilos.descripcion}>
-              Consulta las actividades registradas en las atenciones
-              veterinarias.
+              Consulta las actividades registradas en las atenciones veterinarias.
             </Text>
           </View>
-
-          <View style={estilos.iconoSeccion}>
-            <Text style={estilos.iconoSeccionTexto}>✓</Text>
-          </View>
         </View>
 
-        {/* Indicadores resumidos de actividades. */}
-        <View style={estilos.resumen}>
-          <View style={estilos.tarjetaResumen}>
-            <Text style={estilos.numeroResumen}>{actividades.length}</Text>
-            <Text style={estilos.textoResumen}>Total</Text>
-          </View>
+        {/* BÚSQUEDA */}
 
-          <View style={estilos.tarjetaResumen}>
-            <Text style={estilos.numeroPendiente}>{pendientes}</Text>
-            <Text style={estilos.textoResumen}>Pendientes</Text>
-          </View>
+        <View style={estilos.contenedorBusqueda}>
+          <Text style={estilos.iconoBusqueda}>⌕</Text>
 
-          <View style={estilos.tarjetaResumen}>
-            <Text style={estilos.numeroCompletada}>{completadas}</Text>
-            <Text style={estilos.textoResumen}>Completadas</Text>
-          </View>
+          <TextInput
+            value={busqueda}
+            onChangeText={setBusqueda}
+            placeholder="Buscar por actividad, mascota o atención..."
+            placeholderTextColor={C.secundario}
+            style={estilos.inputBusqueda}
+            returnKeyType="search"
+          />
 
-          <View style={estilos.tarjetaResumen}>
-            <Text style={estilos.numeroNoRealizada}>{noRealizadas}</Text>
-            <Text style={estilos.textoResumen}>No realizadas</Text>
-          </View>
+          {busqueda.length > 0 && (
+            <Pressable
+              onPress={() => setBusqueda('')}
+              style={estilos.botonLimpiar}
+            >
+              <Text style={estilos.textoLimpiar}>×</Text>
+            </Pressable>
+          )}
         </View>
 
-        {/* Filtros por estado: no incluye En proceso. */}
-        <Text style={estilos.tituloFiltros}>Filtrar actividades</Text>
+        {/* FILTROS */}
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={estilos.contenedorFiltros}
-        >
+        <View style={estilos.contenedorFiltros}>
           {ESTADOS.map((estado) => {
             const seleccionado = filtro === estado;
 
             return (
               <Pressable
                 key={estado}
-                accessibilityRole="button"
-                accessibilityState={{ selected: seleccionado }}
                 onPress={() => setFiltro(estado)}
+                accessibilityRole="button"
+                accessibilityState={{
+                  selected: seleccionado,
+                }}
                 style={[
                   estilos.botonFiltro,
-                  seleccionado && estilos.botonFiltroSeleccionado,
+                  seleccionado &&
+                    estilos.botonFiltroSeleccionado,
                 ]}
               >
                 <Text
                   style={[
                     estilos.textoFiltro,
-                    seleccionado && estilos.textoFiltroSeleccionado,
+                    seleccionado &&
+                      estilos.textoFiltroSeleccionado,
                   ]}
                 >
-                  {estado}
+                  {estado === 'Pendiente'
+                    ? 'Pendientes'
+                    : estado === 'Completada'
+                      ? 'Completadas'
+                      : estado === 'No realizada'
+                        ? 'No realizadas'
+                        : 'Todas'}
                 </Text>
               </Pressable>
             );
           })}
-        </ScrollView>
-
-        {/* Encabezado del listado. */}
-        <View style={estilos.encabezadoListado}>
-          <Text style={estilos.tituloListado}>Listado de actividades</Text>
-
-          <Text style={estilos.contadorListado}>
-            {actividadesFiltradas.length}
-          </Text>
         </View>
 
-        {/* Estado de carga. */}
+        <Text style={estilos.textoResultados}>
+          {actividadesFiltradas.length}{' '}
+          {actividadesFiltradas.length === 1
+            ? 'actividad encontrada'
+            : 'actividades encontradas'}
+        </Text>
+
+        {/* CARGA */}
+
         {cargando ? (
           <View style={estilos.estadoVacio}>
-            <ActivityIndicator size="large" color={C.verde} />
+            <ActivityIndicator
+              size="large"
+              color={C.verde}
+            />
+
             <Text style={estilos.textoEstadoVacio}>
               Cargando actividades...
             </Text>
           </View>
         ) : errorCarga ? (
-          /* Opción para reintentar si falló la consulta. */
           <View style={estilos.estadoVacio}>
-            <Text style={estilos.iconoVacio}>!</Text>
             <Text style={estilos.tituloVacio}>
               No se pudieron cargar las actividades
             </Text>
+
             <Pressable
               style={estilos.botonReintentar}
               onPress={() => cargarActividades()}
@@ -409,55 +716,71 @@ export default function ActividadesScreen() {
             </Pressable>
           </View>
         ) : actividadesFiltradas.length === 0 ? (
-          /* Mensaje cuando no existen resultados. */
           <View style={estilos.estadoVacio}>
             <Text style={estilos.iconoVacio}>▤</Text>
 
             <Text style={estilos.tituloVacio}>
-              {actividades.length === 0
-                ? 'No hay actividades registradas para esta atención.'
-                : 'No hay actividades con este estado.'}
+              {busqueda
+                ? 'No se encontraron coincidencias.'
+                : actividades.length === 0
+                  ? 'No hay actividades registradas.'
+                  : 'No hay actividades con este estado.'}
             </Text>
 
             <Text style={estilos.descripcionVacio}>
-              Prueba con otro filtro o actualiza la información.
+              {busqueda
+                ? 'Prueba con otro término de búsqueda.'
+                : 'Prueba con otro filtro o actualiza la información.'}
             </Text>
 
             <Pressable
               style={estilos.botonReintentar}
-              onPress={() => cargarActividades(true)}
+              onPress={() => (
+                busqueda
+                  ? setBusqueda('')
+                  : cargarActividades(true)
+              )}
             >
               <Text style={estilos.textoBotonReintentar}>
-                Actualizar lista
+                {busqueda
+                  ? 'Limpiar búsqueda'
+                  : 'Actualizar lista'}
               </Text>
             </Pressable>
           </View>
         ) : (
-          /* Tarjetas de actividades consultadas desde Supabase. */
           actividadesFiltradas.map((actividad) => {
-            const estiloEstado = obtenerEstiloEstado(actividad.estado);
+            const estiloEstado = obtenerEstiloEstado(
+              actividad.estado
+            );
 
             return (
               <View
                 key={String(actividad.actividad_id)}
                 style={estilos.tarjetaActividad}
               >
-                <View style={estilos.filaTarjeta}>
-                  <View style={estilos.iconoActividad}>
-                    <Text style={estilos.iconoActividadTexto}>▤</Text>
-                  </View>
+                <View style={estilos.filaTituloTarjeta}>
+                  <Text style={estilos.nombreMascota}>
+                    {actividad.nombre_mascota}
+                  </Text>
 
-                  <View style={estilos.informacionPrincipal}>
-                    <Text style={estilos.nombreTipo}>
-                      {formatearTipo(actividad.tipo)}
-                    </Text>
-
-                    <Text style={estilos.nombreMascota}>
-                      {actividad.nombre_mascota}
-                    </Text>
-
-                    <Text style={estilos.textoAtencion}>
-                      Atención N.° {actividad.atencion_id}
+                  <View
+                    style={[
+                      estilos.etiquetaEstado,
+                      {
+                        backgroundColor: estiloEstado.fondo,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        estilos.textoEtiquetaEstado,
+                        {
+                          color: estiloEstado.texto,
+                        },
+                      ]}
+                    >
+                      {actividad.estado || 'Sin estado'}
                     </Text>
                   </View>
                 </View>
@@ -465,63 +788,60 @@ export default function ActividadesScreen() {
                 <View style={estilos.separadorTarjeta} />
 
                 <View style={estilos.filaDetalle}>
-                  <Text style={estilos.etiquetaDetalle}>Estado</Text>
+                  <Text style={estilos.etiquetaDetalle}>
+                    Tipo de actividad
+                  </Text>
 
-                  <View
-                    style={[
-                      estilos.etiquetaEstado,
-                      { backgroundColor: estiloEstado.fondo },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        estilos.textoEtiquetaEstado,
-                        { color: estiloEstado.texto },
-                      ]}
-                    >
-                      {actividad.estado}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={estilos.filaDetalle}>
-                  <Text style={estilos.etiquetaDetalle}>Fecha prevista</Text>
                   <Text style={estilos.valorDetalle}>
-                    {formatearFecha(actividad.fecha_prevista)}
+                    {formatearTipo(actividad.tipo)}
                   </Text>
                 </View>
 
                 <View style={estilos.filaDetalle}>
-                  <Text style={estilos.etiquetaDetalle}>Fecha de registro</Text>
+                  <Text style={estilos.etiquetaDetalle}>
+                    ID de actividad
+                  </Text>
+
                   <Text style={estilos.valorDetalle}>
-                    {formatearFecha(actividad.fecha_registro)}
+                    {actividad.actividad_id}
                   </Text>
                 </View>
 
-                {actividad.estado === 'No realizada' &&
-                  actividad.motivo_no_realizada ? (
-                    <View style={estilos.contenedorMotivo}>
-                      <Text style={estilos.tituloMotivo}>
-                        Motivo de no realización
-                      </Text>
+                <View style={estilos.filaDetalle}>
+                  <Text style={estilos.etiquetaDetalle}>
+                    ID de atención
+                  </Text>
 
-                      <Text style={estilos.textoMotivo}>
-                        {actividad.motivo_no_realizada}
-                      </Text>
-                    </View>
-                  ) : null}
+                  <Text style={estilos.valorDetalle}>
+                    {actividad.atencion_id || '—'}
+                  </Text>
+                </View>
 
-                {actividad.observaciones ? (
-                  <View style={estilos.contenedorObservaciones}>
-                    <Text style={estilos.tituloObservaciones}>
-                      Observaciones
+                {normalizarTexto(actividad.tipo) !== 'consulta' && (
+                  <View style={estilos.filaDetalle}>
+                    <Text style={estilos.etiquetaDetalle}>
+                      Fecha prevista
                     </Text>
 
-                    <Text style={estilos.textoObservaciones}>
-                      {actividad.observaciones}
+                    <Text style={estilos.valorDetalle}>
+                      {formatearFecha(actividad.fecha_prevista)}
                     </Text>
                   </View>
-                ) : null}
+                )}
+
+                <View style={estilos.separadorInferior} />
+
+                <Pressable
+                  onPress={() => abrirDetalleActividad(actividad)}
+                  accessibilityRole="button"
+                  style={estilos.botonVerDetalle}
+                >
+                  <Text style={estilos.textoVerDetalle}>
+                    Ver detalle
+                  </Text>
+
+                  <Text style={estilos.flechaDetalle}>›</Text>
+                </Pressable>
               </View>
             );
           })
@@ -532,7 +852,6 @@ export default function ActividadesScreen() {
         </Text>
       </ScrollView>
 
-      {/* Menú lateral común de la aplicación. */}
       <MenuLateralDerecho
         visible={menuAbierto}
         onCerrar={() => setMenuAbierto(false)}
@@ -544,378 +863,256 @@ export default function ActividadesScreen() {
   );
 }
 
+// ============================================================
+// ESTILOS
+// ============================================================
+
 const estilos = StyleSheet.create({
   contenedor: {
     flex: 1,
     backgroundColor: C.fondo,
   },
-
   contenido: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 15,
     paddingBottom: 32,
   },
-
-  migas: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 22,
-  },
-
-  migaInicio: {
-    color: C.secundario,
-    fontSize: 13,
-  },
-
-  separadorMigas: {
-    color: C.secundario,
-    fontSize: 13,
-  },
-
-  migaActual: {
-    color: C.verde,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
   encabezadoSeccion: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 22,
+    marginBottom: 18,
   },
-
+  botonRegresar: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.borde,
+    backgroundColor: C.blanco,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 11,
+  },
+  flechaRegresar: {
+    color: C.verde,
+    fontSize: 27,
+    lineHeight: 30,
+  },
   textosSeccion: {
     flex: 1,
-    paddingRight: 12,
   },
-
   tituloSeccion: {
     color: C.texto,
-    fontSize: 25,
+    fontSize: 22,
     fontWeight: '800',
   },
-
   descripcion: {
     color: C.secundario,
-    fontSize: 14,
-    lineHeight: 21,
-    marginTop: 7,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
   },
-
-  iconoSeccion: {
-    width: 49,
-    height: 49,
-    borderRadius: 15,
-    backgroundColor: C.verdeClaro,
+  contenedorBusqueda: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 47,
+    backgroundColor: C.blanco,
+    borderWidth: 1,
+    borderColor: C.borde,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 13,
+  },
+  iconoBusqueda: {
+    color: C.secundario,
+    fontSize: 24,
+    marginRight: 9,
+  },
+  inputBusqueda: {
+    flex: 1,
+    color: C.texto,
+    fontSize: 12,
+    paddingVertical: 11,
+  },
+  botonLimpiar: {
+    width: 27,
+    height: 27,
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  iconoSeccionTexto: {
-    color: C.verde,
-    fontSize: 25,
-    fontWeight: '800',
-  },
-
-  resumen: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 25,
-  },
-
-  tarjetaResumen: {
-    flexGrow: 1,
-    flexBasis: '43%',
-    backgroundColor: C.blanco,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: C.borde,
-    paddingVertical: 16,
-    paddingHorizontal: 13,
-  },
-
-  numeroResumen: {
-    color: C.texto,
-    fontSize: 25,
-    fontWeight: '800',
-  },
-
-  numeroPendiente: {
-    color: C.naranjaTexto,
-    fontSize: 25,
-    fontWeight: '800',
-  },
-
-  numeroCompletada: {
-    color: C.verde,
-    fontSize: 25,
-    fontWeight: '800',
-  },
-
-  numeroNoRealizada: {
-    color: C.rojoTexto,
-    fontSize: 25,
-    fontWeight: '800',
-  },
-
-  textoResumen: {
+  textoLimpiar: {
     color: C.secundario,
-    fontSize: 12,
-    marginTop: 5,
+    fontSize: 21,
   },
-
-  tituloFiltros: {
-    color: C.texto,
-    fontSize: 16,
-    fontWeight: '800',
-    marginBottom: 12,
-  },
-
   contenedorFiltros: {
-    gap: 9,
-    paddingBottom: 5,
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
   },
-
   botonFiltro: {
-    borderRadius: 11,
+    flex: 1,
+    minHeight: 43,
+    backgroundColor: C.blanco,
     borderWidth: 1,
     borderColor: C.borde,
-    backgroundColor: C.blanco,
-    paddingHorizontal: 15,
-    paddingVertical: 11,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    paddingVertical: 6,
   },
-
   botonFiltroSeleccionado: {
     backgroundColor: C.verde,
     borderColor: C.verde,
   },
-
   textoFiltro: {
     color: C.texto,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
+    textAlign: 'center',
   },
-
   textoFiltroSeleccionado: {
     color: C.blanco,
   },
-
-  encabezadoListado: {
+  textoResultados: {
+    color: C.secundario,
+    fontSize: 11,
+    marginBottom: 10,
+  },
+  tarjetaActividad: {
+    backgroundColor: C.blanco,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.borde,
+    paddingHorizontal: 14,
+    paddingTop: 15,
+    paddingBottom: 8,
+    marginBottom: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.035,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  filaTituloTarjeta: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 22,
-    marginBottom: 13,
+    gap: 10,
+    marginBottom: 14,
   },
-
-  tituloListado: {
+  nombreMascota: {
     color: C.texto,
     fontSize: 17,
     fontWeight: '800',
     flex: 1,
   },
-
-  contadorListado: {
-    color: C.verde,
-    backgroundColor: C.verdeClaro,
-    borderRadius: 9,
-    overflow: 'hidden',
+  etiquetaEstado: {
+    borderRadius: 20,
     paddingHorizontal: 11,
-    paddingVertical: 5,
-    fontSize: 12,
-    fontWeight: '800',
+    paddingVertical: 6,
   },
-
-  tarjetaActividad: {
-    backgroundColor: C.blanco,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: C.borde,
-    padding: 16,
-    marginBottom: 13,
-  },
-
-  filaTarjeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  iconoActividad: {
-    width: 45,
-    height: 45,
-    borderRadius: 13,
-    backgroundColor: C.verdeClaro,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-
-  iconoActividadTexto: {
-    color: C.verde,
-    fontSize: 22,
-    fontWeight: '800',
-  },
-
-  informacionPrincipal: {
-    flex: 1,
-  },
-
-  nombreTipo: {
-    color: C.texto,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-
-  nombreMascota: {
-    color: C.verde,
-    fontSize: 14,
+  textoEtiquetaEstado: {
+    fontSize: 10,
     fontWeight: '700',
-    marginTop: 4,
   },
-
-  textoAtencion: {
-    color: C.secundario,
-    fontSize: 12,
-    marginTop: 4,
-  },
-
   separadorTarjeta: {
     height: 1,
     backgroundColor: C.borde,
-    marginVertical: 14,
+    marginBottom: 12,
   },
-
   filaDetalle: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 11,
-  },
-
-  etiquetaDetalle: {
-    color: C.secundario,
-    fontSize: 12,
-    flex: 1,
-  },
-
-  valorDetalle: {
-    color: C.texto,
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'right',
-  },
-
-  etiquetaEstado: {
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-
-  textoEtiquetaEstado: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-
-  contenedorMotivo: {
-    backgroundColor: C.rojo,
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 5,
-  },
-
-  tituloMotivo: {
-    color: C.rojoTexto,
-    fontSize: 12,
-    fontWeight: '800',
-    marginBottom: 5,
-  },
-
-  textoMotivo: {
-    color: C.texto,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-
-  contenedorObservaciones: {
-    backgroundColor: C.fondo,
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 10,
-  },
-
-  tituloObservaciones: {
-    color: C.texto,
-    fontSize: 12,
-    fontWeight: '800',
-    marginBottom: 5,
-  },
-
-  textoObservaciones: {
-    color: C.secundario,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-
-  estadoVacio: {
-    backgroundColor: C.blanco,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: C.borde,
-    padding: 25,
-    alignItems: 'center',
-    marginTop: 5,
-  },
-
-  iconoVacio: {
-    color: C.verde,
-    fontSize: 30,
-    fontWeight: '800',
+    gap: 12,
     marginBottom: 10,
   },
-
+  etiquetaDetalle: {
+    color: C.secundario,
+    fontSize: 11,
+    flex: 1,
+  },
+  valorDetalle: {
+    color: C.texto,
+    fontSize: 11,
+    fontWeight: '500',
+    textAlign: 'right',
+    flex: 1,
+  },
+  separadorInferior: {
+    height: 1,
+    backgroundColor: C.borde,
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  botonVerDetalle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingVertical: 9,
+    paddingHorizontal: 2,
+  },
+  textoVerDetalle: {
+    color: C.verde,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  flechaDetalle: {
+    color: C.verde,
+    fontSize: 21,
+    fontWeight: '700',
+    marginLeft: 5,
+  },
+  estadoVacio: {
+    backgroundColor: C.blanco,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: C.borde,
+    padding: 28,
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  iconoVacio: {
+    color: C.verde,
+    fontSize: 29,
+    marginBottom: 10,
+  },
   tituloVacio: {
     color: C.texto,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
     textAlign: 'center',
   },
-
   textoEstadoVacio: {
     color: C.secundario,
-    fontSize: 13,
+    fontSize: 12,
     marginTop: 12,
   },
-
   descripcionVacio: {
     color: C.secundario,
-    fontSize: 12,
+    fontSize: 11,
     textAlign: 'center',
-    lineHeight: 18,
-    marginTop: 8,
+    marginTop: 7,
+    lineHeight: 17,
   },
-
   botonReintentar: {
     backgroundColor: C.verde,
     borderRadius: 10,
     paddingHorizontal: 16,
-    paddingVertical: 11,
-    marginTop: 15,
+    paddingVertical: 10,
+    marginTop: 14,
   },
-
   textoBotonReintentar: {
     color: C.blanco,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
   },
-
   pie: {
     color: C.secundario,
-    fontSize: 11,
+    fontSize: 10,
     textAlign: 'center',
-    lineHeight: 17,
-    marginTop: 25,
+    lineHeight: 16,
+    marginTop: 18,
   },
 });

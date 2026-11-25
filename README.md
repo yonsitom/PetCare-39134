@@ -1,81 +1,56 @@
-# PetCare · Sistema de seguimiento de actividades de atención veterinaria
+# Welcome to your Expo app 👋
 
-Aplicación móvil para el **Centro Veterinario del Sur** que centraliza el registro de propietarios y mascotas, y da seguimiento en tiempo real a las atenciones veterinarias y sus actividades (pendiente, completada o no realizada), con avance porcentual, línea de tiempo e historial de cambios.
+This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
-**Curso:** Curso Integrador I: Sistemas – Software · UTP · Sección 39134 · Equipo 3 · 2026-II
+## Get started
 
-## Tecnologías
+1. Install dependencies
 
-|Capa|Tecnología|
-|-|-|
-|App móvil|React Native 0.86 + Expo 57 (JavaScript), Expo Router|
-|Base de datos y autenticación|Supabase (PostgreSQL, Auth, Row Level Security)|
-|Pruebas|Jest + jest-expo + @testing-library/react-native|
-|Librerías de apoyo|@supabase/supabase-js (datos), expo-print + expo-sharing (archivos PDF), react-native-logs (logging), expo-secure-store (sesión cifrada)|
+   ```bash
+   npm install
+   ```
 
-## Arquitectura
+2. Start the app
 
-MVC + DAO: **Vista** (`src/app`, `src/components`) → **Controlador** (`src/controllers`, `src/services`) → **Modelo/DAO** (`src/dao`) → Supabase. Diagrama: [`docs/diagramas/arquitectura.png`](docs/diagramas/arquitectura.png).
+   ```bash
+   npx expo start
+   ```
 
-## Perfiles de usuario
+In the output, you'll find options to open the app in a
 
-* **Administrador:** gestiona cuentas de usuario, estado de propietarios y mascotas, indicadores e historial de cambios.
-* **Asistente:** registra propietarios, mascotas, atenciones y actividades, y actualiza su estado.
+- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
+- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
+- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
+- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
 
-## Cómo ejecutar
+You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+
+## Get a fresh project
+
+When you're ready, run:
 
 ```bash
-npm install        # instala las dependencias
-npx expo start     # inicia la app (presiona "a" para abrirla en Android)
-npm test           # ejecuta las pruebas automatizadas (Jest)
+npm run reset-project
 ```
 
-Generar la APK: `npx eas build -p android --profile preview`
+This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
 
-## Estructura del repositorio
+### Other setup steps
 
-```
-src/
-  app/          Pantallas (Vista) – rutas de Expo Router
-  components/   Componentes reutilizables de interfaz
-  controllers/  Controladores por módulo
-  services/     Lógica de requerimientos y servicios de apoyo
-  dao/          Acceso a datos (único punto que consulta Supabase)
-  utils/        Logger y validaciones
-  tests/        Pruebas unitarias (TDD)
-docs/
-  entregables/    APF1, APF2 y APF3 en PDF
-  base\_de\_datos/  Script SQL y modelo lógico
-  diagramas/      Diagramas fuente (arquitectura, secuencia)
-```
+- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
+- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
+- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
 
-## Ramas
+## Learn more
 
-|Rama|Uso|
-|-|-|
-|`main`|Versión estable: lo que se entrega y se compila como APK. Solo recibe cambios mediante Pull Request.|
-|`feature/<funcionalidad>`|Desarrollo de una funcionalidad nueva (ej. `feature/librerias`). Se une a `main` con un Pull Request.|
-|`docs/<tema>`|Documentación del proyecto (ej. `docs/documentacion`).|
+To learn more about developing your project with Expo, look at the following resources:
 
-## Convención de mensajes de commit
+- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
+- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
 
-Verbo en presente (3.ª persona) + qué se hizo + módulo, en español. Ejemplos:
+## Join the community
 
-* `Implementa registro y consulta de propietarios y mascotas`
-* `Corrige validación del DNI en el registro de propietarios`
-* `Agrega exportación del detalle de atención a PDF`
-* `Documenta la estructura del proyecto en el README`
+Join our community of developers creating universal apps.
 
-Verbos: **Implementa** (función nueva), **Agrega** (archivo o librería), **Corrige** (error), **Refactoriza** (mejora sin cambiar el comportamiento), **Documenta** (documentación), **Prueba** (pruebas).
-
-## Equipo
-
-|Integrante|Usuario GitHub|
-|-|-|
-|Narvaez Francia, Camila Noemi|NarvaezCamila|
-|Noriega Pardo, Jhon Kevin|yonsitom|
-|Alarcón Bardales, Gianella Sophia |soph-iaa|
-|Lázaro Ruiz, Juliams Schneider |schneiderlr-dev|
-
-
-
+- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
+- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.

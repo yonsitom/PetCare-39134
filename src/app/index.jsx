@@ -9,14 +9,14 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import { supabase } from '../services/supabase';
 
 import FormularioInicioSesion from '../components/autenticacion/FormularioInicioSesion';
 import { crearControladorInicioSesion } from '../controllers/autenticacion/iniciarSesionControlador';
-import { iniciarSesionConCorreo } from '../services/autenticacionServicio';
-import { verificarCuentaActiva } from '../services/perfilServicio';
-import { verificarSesionPersistida } from '../services/sesionPersistenciaServicio';
-import { supabase } from '../services/supabase';
-import { logger } from '../utils/logger';
+import { iniciarSesionConCorreo } from '../services/autentificacion/autenticacionServicio';
+
+import { verificarCuentaActiva } from '../services/autentificacion/perfilServicio';
+import { verificarSesionPersistida } from '../services/persistencia/sesionPersistenciaServicio';
 
 const COLORES = {
   fondo: '#F4F8F7',
@@ -70,7 +70,7 @@ export default function PantallaInicioSesion() {
           return;
         }
       } catch (error) {
-        logger.error(
+        console.error(
           'RF04 - Error al comprobar la sesión:',
           error?.message || error
         );
@@ -117,14 +117,14 @@ export default function PantallaInicioSesion() {
     limpiarMensaje();
 
     try {
-      logger.info('RF01: iniciando autenticación.');
+      console.log('RF01: iniciando autenticación.');
 
       const resultado = await controladorRef.current.iniciarSesion(
         correo,
         contrasena
       );
 
-      logger.info('RF01: resultado del controlador:', {
+      console.log('RF01: resultado del controlador:', {
         autenticado: resultado?.autenticado,
         redirigir: resultado?.redirigir,
         tipoMensaje: resultado?.tipoMensaje,
@@ -143,12 +143,12 @@ export default function PantallaInicioSesion() {
       navegando.current = true;
       setInicioExitoso(true);
 
-      logger.info('RF01: navegando al panel /inicio.');
+      console.log('RF01: navegando al panel /inicio.');
 
       // Navegar directamente, sin depender de un temporizador.
       router.replace('/inicio');
     } catch (error) {
-      logger.error('RF01 - Error al iniciar sesión:', error);
+      console.error('RF01 - Error al iniciar sesión:', error);
 
       if (componenteActivo.current) {
         navegando.current = false;
@@ -169,12 +169,11 @@ export default function PantallaInicioSesion() {
   };
 
   // RF03: recuperar contraseña.
-  const recuperarContrasena = () => {
-    if (cargando || inicioExitoso || navegando.current) return;
-
-    limpiarMensaje();
-    router.push('/recuperarContrasena');
-  };
+const recuperarContrasena = () => {
+  if (cargando || inicioExitoso || navegando.current) return;
+  limpiarMensaje();
+  router.push('/usuario/recuperarContrasena');
+};
 
   if (verificandoSesion) {
     return (

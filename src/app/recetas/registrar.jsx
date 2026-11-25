@@ -1,8 +1,10 @@
 
 import React, { useEffect, useState } from 'react';
+
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -11,172 +13,391 @@ import {
   TextInput,
   View,
 } from 'react-native';
+
 import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../services/supabase';
 
 import {
-  registrarConsultaYRecetaServicio,
+  registrarRecetaServicio,
   obtenerMedicamentosServicio,
   registrarMedicamentosRecetaServicio,
 } from '../../services/recetas/recetasServicio';
 
-import EncabezadoPetCareModulo from '../../components/layout/EncabezadoPetCare';
-import MenuLateralDerechoModulo from '../../components/layout/MenuLateralDerecho';
-import { logger } from '../../utils/logger';
+import {
+  obtenerTiposDietaServicio,
+  registrarDietaServicio,
+} from '../../services/dieta/dietaServicio';
 
-const EncabezadoPetCare =
-  EncabezadoPetCareModulo?.default || EncabezadoPetCareModulo;
+import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
+import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 
-const MenuLateralDerecho =
-  MenuLateralDerechoModulo?.default || MenuLateralDerechoModulo;
+// ============================================================
+// CONFIGURACIÓN VISUAL
+// ============================================================
 
-const C = {
-  fondo: '#F4F8F7',
-  verde: '#12665E',
-  oscuro: '#104F49',
-  claro: '#E6F4EF',
-  texto: '#243746',
-  secundario: '#718096',
+const COLORES = {
+  primario: '#176B57',
+  primarioOscuro: '#105344',
+  fondo: '#F4F7F6',
   blanco: '#FFFFFF',
-  borde: '#E0EAE7',
-  rojo: '#B42318',
+  texto: '#24332F',
+  secundario: '#687873',
+  borde: '#DCE6E2',
+  peligro: '#C0392B',
+  suave: '#E8F3EF',
 };
 
-const fechaActual = () => {
-  const f = new Date();
+// ============================================================
+// CAMPOS DINÁMICOS POR TIPO DE DIETA
+// ============================================================
 
-  return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(
-    f.getDate()
-  ).padStart(2, '0')}`;
+const CAMPOS_POR_DIETA = {
+  'Dieta natural': [
+    {
+      campo: 'opciones_proteina',
+      etiqueta: 'Proteínas',
+      placeholder: 'Ej. Pollo, pescado, pavo, carne...',
+    },
+    {
+      campo: 'opciones_vegetales',
+      etiqueta: 'Vegetales',
+      placeholder: 'Ej. Zanahoria, zapallo, brócoli...',
+    },
+    {
+      campo: 'restriccion_nutricional',
+      etiqueta: 'Restricciones nutricionales',
+      placeholder: 'Ej. Evitar determinados alimentos...',
+    },
+  ],
+
+  'Dieta casera cocida': [
+    {
+      campo: 'opciones_proteina',
+      etiqueta: 'Proteínas cocidas',
+      placeholder: 'Ej. Pollo sancochado, pescado cocido...',
+    },
+    {
+      campo: 'opciones_vegetales',
+      etiqueta: 'Vegetales cocidos',
+      placeholder: 'Ej. Zanahoria, zapallo, vainitas...',
+    },
+    {
+      campo: 'preparacion',
+      etiqueta: 'Preparación',
+      placeholder: 'Ej. Cocinar sin sal ni condimentos...',
+    },
+    {
+      campo: 'restriccion_nutricional',
+      etiqueta: 'Restricciones',
+      placeholder: 'Indicar alimentos que debe evitar...',
+    },
+  ],
+
+  'Dieta BARF': [
+    {
+      campo: 'opciones_proteina',
+      etiqueta: 'Carnes y proteínas',
+      placeholder: 'Ej. Pollo, pavo, res, pescado...',
+    },
+    {
+      campo: 'huesos_carnosos',
+      etiqueta: 'Huesos carnosos',
+      placeholder: 'Indicar los huesos carnosos considerados...',
+    },
+    {
+      campo: 'organos',
+      etiqueta: 'Vísceras y órganos',
+      placeholder: 'Ej. Hígado, corazón, riñón...',
+    },
+    {
+      campo: 'opciones_vegetales',
+      etiqueta: 'Vegetales y frutas',
+      placeholder: 'Ej. Zanahoria, espinaca, manzana...',
+    },
+    {
+      campo: 'suplementos',
+      etiqueta: 'Suplementos',
+      placeholder: 'Indicar los suplementos recomendados...',
+    },
+    {
+      campo: 'restriccion_nutricional',
+      etiqueta: 'Restricciones',
+      placeholder: 'Indicar restricciones alimentarias...',
+    },
+  ],
+
+  'Dieta renal': [
+    {
+      campo: 'fuente_proteina',
+      etiqueta: 'Fuente de proteína',
+      placeholder: 'Indicar la fuente de proteína recomendada...',
+    },
+    {
+      campo: 'opciones_proteina',
+      etiqueta: 'Proteínas indicadas',
+      placeholder: 'Indicar alimentos proteicos permitidos...',
+    },
+    {
+      campo: 'opciones_vegetales',
+      etiqueta: 'Vegetales permitidos',
+      placeholder: 'Indicar vegetales recomendados...',
+    },
+    {
+      campo: 'alimentos_restringidos',
+      etiqueta: 'Alimentos restringidos',
+      placeholder: 'Ej. Alimentos altos en fósforo...',
+    },
+    {
+      campo: 'restriccion_nutricional',
+      etiqueta: 'Restricciones nutricionales',
+      placeholder: 'Indicar restricciones adicionales...',
+    },
+    {
+      campo: 'observaciones',
+      etiqueta: 'Observaciones',
+      placeholder: 'Indicaciones adicionales del veterinario...',
+    },
+  ],
+
+  Otros: [
+    {
+      campo: 'descripcion',
+      etiqueta: 'Descripción de la dieta',
+      placeholder: 'Describe el tipo de dieta...',
+    },
+    {
+      campo: 'indicaciones',
+      etiqueta: 'Indicaciones alimentarias',
+      placeholder: 'Indica los alimentos y la preparación...',
+    },
+    {
+      campo: 'restriccion_nutricional',
+      etiqueta: 'Restricciones nutricionales',
+      placeholder: 'Indicar restricciones...',
+    },
+    {
+      campo: 'observaciones',
+      etiqueta: 'Observaciones',
+      placeholder: 'Otras indicaciones...',
+    },
+  ],
 };
+
+// ============================================================
+// ESTADO INICIAL DE LA DIETA
+// ============================================================
+
+const crearDetalleDietaVacio = () => ({
+  opciones_proteina: '',
+  opciones_vegetales: '',
+  preparacion: '',
+  huesos_carnosos: '',
+  organos: '',
+  suplementos: '',
+  fuente_proteina: '',
+  alimentos_restringidos: '',
+  descripcion: '',
+  indicaciones: '',
+  restriccion_nutricional: '',
+  observaciones: '',
+});
+
+// ============================================================
+// PANTALLA PRINCIPAL
+// ============================================================
 
 export default function RegistrarRecetaScreen() {
   const params = useLocalSearchParams();
 
-  const atencionId = String(
-    Array.isArray(params.atencion_id)
-      ? params.atencion_id[0]
-      : params.atencion_id || ''
-  );
-
-  const [tipoConsultaId, setTipoConsultaId] = useState(null);
-  const [medicamentosDisponibles, setMedicamentosDisponibles] = useState([]);
-  const [medicamentoSeleccionado, setMedicamentoSeleccionado] = useState('');
-  const [medicamentos, setMedicamentos] = useState([]);
-
-  const [datos, setDatos] = useState({
-    fecha_prevista: fechaActual(),
-    motivo_consulta: '',
-    sintomas: '',
-    diagnostico: '',
-    peso: '',
-    temperatura: '',
-    recomendaciones: '',
-    proxima_cita: '',
-    observaciones: '',
-  });
+  const atencionId = String(params.atencion_id ?? '');
+  const numeroHistoria = String(params.numero_historia ?? '');
 
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
-  const [menuAbierto, setMenuAbierto] = useState(false);
+
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [rolUsuario, setRolUsuario] = useState('');
+  const [menuAbierto, setMenuAbierto] = useState(false);
+
+  // ==========================================================
+  // DATOS GENERALES DE LA RECETA
+  // ==========================================================
+
+  const [diagnostico, setDiagnostico] = useState('');
+  const [recomendaciones, setRecomendaciones] = useState('');
+
+  // ==========================================================
+  // MEDICAMENTOS
+  // ==========================================================
+
+  const [medicamentosDisponibles, setMedicamentosDisponibles] =
+    useState([]);
+
+  const [medicamentoSeleccionado, setMedicamentoSeleccionado] =
+    useState('');
+
+  const [mostrarMedicamentos, setMostrarMedicamentos] =
+    useState(false);
+
+  const [medicamentos, setMedicamentos] = useState([]);
+
+  // ==========================================================
+  // DIETAS
+  // ==========================================================
+
+  const [tiposDieta, setTiposDieta] = useState([]);
+
+  const [tipoDietaSeleccionado, setTipoDietaSeleccionado] =
+    useState('');
+
+  const [mostrarTiposDieta, setMostrarTiposDieta] =
+    useState(false);
+
+  const [detalleDieta, setDetalleDieta] = useState(
+    crearDetalleDietaVacio()
+  );
+
+  // ==========================================================
+  // CONTROL DE REGISTRO
+  // ==========================================================
+
+  const [recetaPendienteId, setRecetaPendienteId] = useState(null);
+  const [medicamentosGuardados, setMedicamentosGuardados] =
+    useState(false);
+  const [dietaGuardada, setDietaGuardada] = useState(false);
+
+  // ==========================================================
+  // MODAL
+  // ==========================================================
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTipo, setModalTipo] = useState('exito');
+  const [modalTitulo, setModalTitulo] = useState('');
+  const [modalMensaje, setModalMensaje] = useState('');
+  const [resultadoRegistro, setResultadoRegistro] = useState(null);
 
   useEffect(() => {
-    let activo = true;
-
-    async function cargar() {
-      try {
-        const { data: usuarioData, error: errorUsuario } =
-          await supabase.auth.getUser();
-
-        if (errorUsuario) throw errorUsuario;
-
-        const usuario = usuarioData?.user;
-
-        if (activo && usuario) {
-          setNombreUsuario(
-            usuario.user_metadata?.nombre ||
-              usuario.user_metadata?.full_name ||
-              usuario.email ||
-              ''
-          );
-
-          setRolUsuario(usuario.user_metadata?.rol || '');
-        }
-
-        const { data: tipo, error } = await supabase
-          .from('tipos_actividad')
-          .select('tipo_id, codigo, nombre')
-          .eq('activo', true)
-          .eq('codigo', 'CONSULTA')
-          .maybeSingle();
-
-        if (error) throw error;
-
-        if (!tipo) {
-          throw new Error('El tipo CONSULTA no está activo.');
-        }
-
-        const listaMedicamentos = await obtenerMedicamentosServicio();
-
-        if (activo) {
-          setTipoConsultaId(tipo.tipo_id);
-          setMedicamentosDisponibles(listaMedicamentos || []);
-        }
-      } catch (error) {
-        logger.error('Error cargando formulario de receta:', error);
-
-        Alert.alert(
-          'Error',
-          error.message || 'No se pudo cargar el formulario.'
-        );
-      } finally {
-        if (activo) {
-          setCargando(false);
-        }
-      }
-    }
-
-    cargar();
-
-    return () => {
-      activo = false;
-    };
+    cargarDatos();
   }, []);
 
-  function cambiar(campo, valor) {
-    setDatos((actual) => ({
-      ...actual,
-      [campo]: valor,
-    }));
+  // ============================================================
+  // CARGAR INFORMACIÓN
+  // ============================================================
+
+  async function cargarDatos() {
+    try {
+      setCargando(true);
+
+      if (!atencionId || !/^\d+$/.test(atencionId)) {
+        throw new Error(
+          'No se recibió un identificador válido de atención.'
+        );
+      }
+
+      const { data: usuarioData, error: usuarioError } =
+        await supabase.auth.getUser();
+
+      if (usuarioError) {
+        throw usuarioError;
+      }
+
+      const usuario = usuarioData?.user;
+
+      if (usuario) {
+        setNombreUsuario(
+          usuario.user_metadata?.nombre_completo ||
+          usuario.user_metadata?.nombre ||
+          usuario.user_metadata?.full_name ||
+          usuario.email ||
+          'Usuario'
+        );
+
+        setRolUsuario(usuario.user_metadata?.rol || '');
+      }
+
+      // No se consulta tipos_actividad.
+      // La receta es independiente de las actividades y consultas.
+
+      const [
+        listaMedicamentos,
+        listaTiposDieta,
+      ] = await Promise.all([
+        obtenerMedicamentosServicio(),
+        obtenerTiposDietaServicio(),
+      ]);
+
+      setMedicamentosDisponibles(
+        Array.isArray(listaMedicamentos)
+          ? listaMedicamentos
+          : []
+      );
+
+      setTiposDieta(
+        Array.isArray(listaTiposDieta)
+          ? listaTiposDieta.filter((tipo) => tipo.activo !== false)
+          : []
+      );
+
+    } catch (error) {
+      console.error(
+        'Error cargando formulario de receta:',
+        error
+      );
+
+      Alert.alert(
+        'No se pudo cargar el formulario',
+        error.message || 'Intenta nuevamente.'
+      );
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  // ============================================================
+  // MEDICAMENTOS
+  // ============================================================
+
+  function seleccionarMedicamento(medicamentoId) {
+    setMedicamentoSeleccionado(String(medicamentoId));
+    setMostrarMedicamentos(false);
   }
 
   function agregarMedicamento() {
     if (!medicamentoSeleccionado) {
-      Alert.alert('Campo requerido', 'Selecciona un medicamento.');
-      return;
-    }
-
-    if (
-      medicamentos.some(
-        (m) =>
-          String(m.medicamento_id) === String(medicamentoSeleccionado)
-      )
-    ) {
       Alert.alert(
-        'Medicamento agregado',
-        'Ese medicamento ya está en la lista.'
+        'Medicamento',
+        'Selecciona un medicamento de la lista.'
       );
       return;
     }
 
     const medicamento = medicamentosDisponibles.find(
-      (m) =>
-        String(m.medicamento_id) === String(medicamentoSeleccionado)
+      (item) =>
+        String(item.medicamento_id) ===
+        String(medicamentoSeleccionado)
     );
 
-    if (!medicamento) return;
+    if (!medicamento) {
+      Alert.alert(
+        'Medicamento',
+        'El medicamento seleccionado no existe.'
+      );
+      return;
+    }
+
+    const yaAgregado = medicamentos.some(
+      (item) =>
+        String(item.medicamento_id) ===
+        String(medicamento.medicamento_id)
+    );
+
+    if (yaAgregado) {
+      Alert.alert(
+        'Medicamento duplicado',
+        'Este medicamento ya fue agregado a la receta.'
+      );
+      return;
+    }
 
     setMedicamentos((actual) => [
       ...actual,
@@ -197,7 +418,9 @@ export default function RegistrarRecetaScreen() {
   function actualizarMedicamento(indice, campo, valor) {
     setMedicamentos((actual) =>
       actual.map((item, i) =>
-        i === indice ? { ...item, [campo]: valor } : item
+        i === indice
+          ? { ...item, [campo]: valor }
+          : item
       )
     );
   }
@@ -208,647 +431,1188 @@ export default function RegistrarRecetaScreen() {
     );
   }
 
+  // ============================================================
+  // DIETAS
+  // ============================================================
+
+  function seleccionarTipoDieta(nombre) {
+    setTipoDietaSeleccionado(nombre);
+    setMostrarTiposDieta(false);
+    setDetalleDieta(crearDetalleDietaVacio());
+  }
+
+  function cambiarCampoDieta(campo, valor) {
+    setDetalleDieta((actual) => ({
+      ...actual,
+      [campo]: valor,
+    }));
+  }
+
+  function obtenerCamposDieta() {
+    return CAMPOS_POR_DIETA[tipoDietaSeleccionado] || [];
+  }
+
+  function obtenerDetalleDietaLimpio() {
+    const detalle = {};
+
+    obtenerCamposDieta().forEach((campo) => {
+      const valor = String(
+        detalleDieta[campo.campo] ?? ''
+      ).trim();
+
+      if (valor) {
+        detalle[campo.campo] = valor;
+      }
+    });
+
+    return detalle;
+  }
+
+  // ============================================================
+  // VALIDAR FORMULARIO
+  // ============================================================
+
+  function validarFormulario() {
+    if (!atencionId || !/^\d+$/.test(atencionId)) {
+      throw new Error(
+        'La atención seleccionada no es válida.'
+      );
+    }
+
+    // Validar medicamentos.
+    for (const medicamento of medicamentos) {
+      if (!String(medicamento.dosis ?? '').trim()) {
+        throw new Error(
+          `Completa la dosis del medicamento ${medicamento.nombre_medicamento}.`
+        );
+      }
+
+      if (!String(medicamento.frecuencia ?? '').trim()) {
+        throw new Error(
+          `Completa la frecuencia del medicamento ${medicamento.nombre_medicamento}.`
+        );
+      }
+    }
+
+    // La dieta es opcional.
+    // Si se selecciona un tipo, debe completarse al menos un campo.
+    if (tipoDietaSeleccionado) {
+      const detalle = obtenerDetalleDietaLimpio();
+
+      if (Object.keys(detalle).length === 0) {
+        throw new Error(
+          'Completa al menos un campo de la dieta seleccionada.'
+        );
+      }
+    }
+  }
+
+  // ============================================================
+  // GUARDAR RECETA, MEDICAMENTOS Y DIETA
+  // ============================================================
+
   async function guardar() {
     if (guardando) return;
 
-    if (!/^\d+$/.test(atencionId)) {
-      Alert.alert(
-        'Atención no válida',
-        'No se recibió una atención válida.'
-      );
-      return;
-    }
-
-    if (!tipoConsultaId) {
-      Alert.alert(
-        'Error',
-        'No se encontró el tipo de actividad Consulta.'
-      );
-      return;
-    }
-
-    if (
-      datos.fecha_prevista &&
-      !/^\d{4}-\d{2}-\d{2}$/.test(datos.fecha_prevista)
-    ) {
-      Alert.alert(
-        'Fecha no válida',
-        'Utiliza el formato AAAA-MM-DD.'
-      );
-      return;
-    }
-
-    if (datos.proxima_cita && !/^\d{4}-\d{2}-\d{2}$/.test(datos.proxima_cita)) {
-      Alert.alert(
-        'Fecha no válida',
-        'La próxima cita debe tener el formato AAAA-MM-DD.'
-      );
-      return;
-    }
-
-    if (
-      medicamentos.some(
-        (m) => !String(m.dosis || '').trim()
-      )
-    ) {
-      Alert.alert(
-        'Campo requerido',
-        'Completa la dosis de cada medicamento.'
-      );
-      return;
-    }
-
-    setGuardando(true);
-
     try {
-      const resultado = await registrarConsultaYRecetaServicio({
-        atencion_id: atencionId,
-        tipo_id: tipoConsultaId,
-        ...datos,
-      });
+      validarFormulario();
 
-      if (!resultado?.receta_id) {
-        throw new Error(
-          'No se recibió el identificador de la receta registrada.'
-        );
+      setGuardando(true);
+
+      let recetaId = recetaPendienteId;
+
+      // 1. Registrar directamente la receta en la atención.
+      // Si la receta ya se creó en un intento anterior,
+      // se reutiliza su identificador para evitar otra receta.
+      if (!recetaId) {
+        const resultado = await registrarRecetaServicio({
+          atencion_id: atencionId,
+          diagnostico: diagnostico.trim() || null,
+          recomendaciones: recomendaciones.trim() || null,
+        });
+
+        if (!resultado?.receta_id) {
+          throw new Error(
+            'No se recibió el identificador de la receta creada.'
+          );
+        }
+
+        recetaId = resultado.receta_id;
+        setRecetaPendienteId(recetaId);
       }
 
-      if (medicamentos.length > 0) {
+      // 2. Registrar medicamentos.
+      if (!medicamentosGuardados && medicamentos.length > 0) {
         await registrarMedicamentosRecetaServicio(
-          resultado.receta_id,
+          recetaId,
           medicamentos
         );
+
+        setMedicamentosGuardados(true);
+      } else if (medicamentos.length === 0) {
+        setMedicamentosGuardados(true);
       }
 
-      Alert.alert(
-        'Receta registrada',
-        'La consulta y la receta médica se registraron correctamente.',
-        [
-          {
-            text: 'Aceptar',
-            onPress: () =>
-              router.replace({
-                pathname: '/recetas/detalle',
-                params: {
-                  receta_id: String(resultado.receta_id),
-                  atencion_id: atencionId,
-                },
-              }),
-          },
-        ],
-        { cancelable: false }
+      // 3. Registrar dieta directamente en la receta.
+      if (
+        tipoDietaSeleccionado &&
+        !dietaGuardada
+      ) {
+        const detalle = obtenerDetalleDietaLimpio();
+
+        await registrarDietaServicio({
+          receta_id: recetaId,
+          tipo_dieta: tipoDietaSeleccionado,
+          detalle_dieta: detalle,
+        });
+
+        setDietaGuardada(true);
+      }
+
+      setResultadoRegistro({
+        receta_id: recetaId,
+        atencion_id: atencionId,
+      });
+
+      setModalTipo('exito');
+      setModalTitulo('Registro completado');
+
+      setModalMensaje(
+        tipoDietaSeleccionado
+          ? 'La receta, los medicamentos y la dieta se registraron correctamente.'
+          : 'La receta y los medicamentos se registraron correctamente.'
       );
+
+      setModalVisible(true);
+
     } catch (error) {
-      logger.error('Error guardando receta:', error);
+      console.error(
+        'Error registrando receta:',
+        error
+      );
 
       Alert.alert(
         'No se pudo completar el registro',
-        error.message || 'Ocurrió un error al guardar la receta.'
+        error.message ||
+          'Ocurrió un error al guardar la información.'
       );
     } finally {
       setGuardando(false);
     }
   }
 
-  async function cerrarSesion() {
-    try {
-      const { error } = await supabase.auth.signOut();
+  // ============================================================
+  // CANCELAR Y MODALES
+  // ============================================================
 
-      if (error) throw error;
-
-      setMenuAbierto(false);
-      router.replace('/login');
-    } catch (error) {
-      logger.error('Error cerrando sesión:', error);
-
+  function solicitarCancelar() {
+    if (recetaPendienteId) {
       Alert.alert(
-        'Error',
-        'No se pudo cerrar la sesión.'
+        'Receta parcialmente registrada',
+        'La receta ya fue creada. Completa el registro de sus medicamentos o dieta antes de salir.'
       );
+      return;
+    }
+
+    setModalTipo('cancelar');
+    setModalTitulo('¿Cancelar registro?');
+
+    setModalMensaje(
+      'Se descartarán los datos que todavía no hayas guardado. ¿Deseas salir?'
+    );
+
+    setModalVisible(true);
+  }
+
+  function confirmarModal() {
+    setModalVisible(false);
+
+    if (modalTipo === 'cancelar') {
+      router.replace({
+        pathname: '/atenciones/detalleAtencion',
+        params: {
+          atencion_id: atencionId,
+        },
+      });
+
+      return;
+    }
+
+    if (modalTipo === 'exito' && resultadoRegistro) {
+      router.replace({
+        pathname: '/atenciones/detalleAtencion',
+        params: {
+          atencion_id: resultadoRegistro.atencion_id,
+        },
+      });
     }
   }
 
-  const campo = (
-    label,
-    key,
-    placeholder,
-    multiline = false,
-    keyboardType = 'default'
-  ) => (
-    <View key={key}>
-      <Text style={s.etiqueta}>{label}</Text>
+  function cerrarModal() {
+    setModalVisible(false);
+  }
 
-      <TextInput
-        value={datos[key]}
-        onChangeText={(valor) => cambiar(key, valor)}
-        placeholder={placeholder}
-        placeholderTextColor={C.secundario}
-        style={[s.input, multiline && s.multilinea]}
-        multiline={multiline}
-        textAlignVertical={multiline ? 'top' : 'center'}
-        keyboardType={keyboardType}
-        editable={!guardando}
-      />
-    </View>
-  );
+  // ============================================================
+  // CARGANDO
+  // ============================================================
+
+  if (cargando) {
+    return (
+      <SafeAreaView style={styles.cargando}>
+        <ActivityIndicator
+          size="large"
+          color={COLORES.primario}
+        />
+
+        <Text style={styles.textoCargando}>
+          Cargando formulario...
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
+  // ============================================================
+  // VISTA PRINCIPAL
+  // ============================================================
 
   return (
-    <SafeAreaView style={s.contenedor}>
-      {typeof EncabezadoPetCare === 'function' ? (
-        <EncabezadoPetCare
-          titulo="PetCare"
-          onAbrirMenu={() => setMenuAbierto(true)}
-          onAbrirNotificaciones={() =>
-            Alert.alert(
-              'Notificaciones',
-              'No tienes notificaciones nuevas.'
-            )
-          }
-        />
-      ) : (
-        <View style={s.encabezadoAlternativo}>
-          <Text style={s.encabezadoTexto}>PetCare</Text>
-          <Pressable onPress={() => setMenuAbierto(true)}>
-            <Text style={s.encabezadoBoton}>☰</Text>
-          </Pressable>
-        </View>
-      )}
+    <SafeAreaView style={styles.contenedor}>
+      <EncabezadoPetCare
+        nombreUsuario={nombreUsuario}
+        rolUsuario={rolUsuario}
+        onMenuPress={() => setMenuAbierto(true)}
+      />
+
+      <MenuLateralDerecho
+        visible={menuAbierto}
+        menuAbierto={menuAbierto}
+        onClose={() => setMenuAbierto(false)}
+        nombreUsuario={nombreUsuario}
+        rolUsuario={rolUsuario}
+      />
 
       <ScrollView
-        contentContainerStyle={s.contenido}
+        contentContainerStyle={styles.contenido}
         keyboardShouldPersistTaps="handled"
       >
-        <Text
-          style={s.migas}
-          onPress={() =>
-            router.replace({
-              pathname: '/detalleAtencion',
-              params: { atencion_id: atencionId },
-            })
-          }
-        >
-          Atención / Registrar receta
-        </Text>
 
-        <Text style={s.titulo}>Receta médica</Text>
+        {/* ENCABEZADO */}
 
-        <Text style={s.subtitulo}>
-          Registra los datos clínicos y el tratamiento de la mascota.
-        </Text>
+        <View style={styles.encabezadoPagina}>
+          <Pressable
+            style={styles.botonVolver}
+            onPress={solicitarCancelar}
+          >
+            <Text style={styles.textoVolver}>‹</Text>
+          </Pressable>
 
-        {cargando ? (
-          <ActivityIndicator color={C.verde} size="large" />
-        ) : (
-          <View style={s.tarjeta}>
-            <Text style={s.seccion}>Datos de consulta</Text>
-
-            {campo(
-              'Fecha de consulta (AAAA-MM-DD)',
-              'fecha_prevista',
-              'AAAA-MM-DD'
-            )}
-
-            {campo(
-              'Motivo de consulta',
-              'motivo_consulta',
-              'Describe el motivo',
-              true
-            )}
-
-            {campo(
-              'Síntomas',
-              'sintomas',
-              'Síntomas observados',
-              true
-            )}
-
-            {campo(
-              'Diagnóstico',
-              'diagnostico',
-              'Diagnóstico clínico',
-              true
-            )}
-
-            {campo(
-              'Peso (kg)',
-              'peso',
-              'Ej. 5.5',
-              false,
-              'decimal-pad'
-            )}
-
-            {campo(
-              'Temperatura (°C)',
-              'temperatura',
-              'Ej. 38.5',
-              false,
-              'decimal-pad'
-            )}
-
-            {campo(
-              'Recomendaciones',
-              'recomendaciones',
-              'Recomendaciones para el propietario',
-              true
-            )}
-
-            {campo(
-              'Próxima cita (AAAA-MM-DD)',
-              'proxima_cita',
-              'AAAA-MM-DD'
-            )}
-
-            {campo(
-              'Observaciones de la actividad',
-              'observaciones',
-              'Observaciones adicionales',
-              true
-            )}
-
-            <Text style={s.seccion}>Medicamentos</Text>
-
-            <Text style={s.ayuda}>
-              Selecciona los medicamentos registrados en el catálogo.
+          <View style={styles.titulos}>
+            <Text style={styles.titulo}>
+              Registrar receta
             </Text>
 
-            {medicamentosDisponibles.length === 0 ? (
-              <Text style={s.error}>
-                No hay medicamentos activos en el catálogo.
-              </Text>
-            ) : (
-              <>
-                {medicamentosDisponibles.map((m) => (
-                  <Pressable
-                    key={String(m.medicamento_id)}
-                    onPress={() =>
-                      setMedicamentoSeleccionado(
-                        String(m.medicamento_id)
-                      )
-                    }
-                    disabled={guardando}
-                    style={[
-                      s.opcion,
-                      String(medicamentoSeleccionado) ===
-                        String(m.medicamento_id) &&
-                        s.opcionActiva,
-                    ]}
-                  >
-                    <Text style={s.opcionTexto}>
-                      {m.nombre_medicamento}
-                      {m.concentracion
-                        ? ` · ${m.concentracion}`
-                        : ''}
-                    </Text>
-                  </Pressable>
-                ))}
+            <Text style={styles.subtitulo}>
+              Atención: {numeroHistoria || atencionId}
+            </Text>
+          </View>
+        </View>
 
-                <Pressable
-                  style={s.botonSecundario}
-                  onPress={agregarMedicamento}
-                  disabled={guardando}
-                >
-                  <Text style={s.botonSecundarioTexto}>
-                    + Agregar medicamento seleccionado
-                  </Text>
-                </Pressable>
-              </>
-            )}
+        {/* ================================================== */}
+        {/* 1. DATOS GENERALES DE LA RECETA */}
+        {/* ================================================== */}
 
-            {medicamentos.map((m, i) => (
-              <View
-                key={`${m.medicamento_id}-${i}`}
-                style={s.medicamento}
+        <View style={styles.tarjeta}>
+          <Text style={styles.tituloSeccion}>
+            1. Datos de la receta
+          </Text>
+
+          <Campo
+            etiqueta="Diagnóstico"
+            valor={diagnostico}
+            cambiar={setDiagnostico}
+            placeholder="Escribe el diagnóstico médico..."
+            multilinea
+          />
+
+          <Campo
+            etiqueta="Recomendaciones"
+            valor={recomendaciones}
+            cambiar={setRecomendaciones}
+            placeholder="Escribe las recomendaciones para el cuidado de la mascota..."
+            multilinea
+          />
+
+          <Text style={styles.textoFecha}>
+            La fecha de registro se asignará automáticamente.
+          </Text>
+        </View>
+
+        {/* ================================================== */}
+        {/* 2. MEDICAMENTOS */}
+        {/* ================================================== */}
+
+        <View style={styles.tarjeta}>
+          <Text style={styles.tituloSeccion}>
+            2. Medicamentos
+          </Text>
+
+          <Text style={styles.etiqueta}>
+            Seleccionar medicamento
+          </Text>
+
+          <Pressable
+            style={styles.selectorReceta}
+            onPress={() =>
+              setMostrarMedicamentos((actual) => !actual)
+            }
+          >
+            <Text
+              style={[
+                styles.textoSelectorReceta,
+                !medicamentoSeleccionado &&
+                  styles.textoPlaceholder,
+              ]}
+            >
+              {medicamentoSeleccionado
+                ? (() => {
+                    const medicamento =
+                      medicamentosDisponibles.find(
+                        (item) =>
+                          String(item.medicamento_id) ===
+                          String(medicamentoSeleccionado)
+                      );
+
+                    return medicamento
+                      ? `${medicamento.nombre_medicamento}${
+                          medicamento.concentracion
+                            ? ` - ${medicamento.concentracion}`
+                            : ''
+                        }`
+                      : 'Seleccionar medicamento';
+                  })()
+                : 'Seleccionar medicamento'}
+            </Text>
+
+            <Text style={styles.flecha}>
+              {mostrarMedicamentos ? '▲' : '▼'}
+            </Text>
+          </Pressable>
+
+          {mostrarMedicamentos && (
+            <View style={styles.listaDesplegable}>
+              <ScrollView
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                style={styles.listaMedicamentos}
               >
-                <Text style={s.medicamentoTitulo}>
-                  {m.nombre_medicamento}
-                  {m.concentracion
-                    ? ` · ${m.concentracion}`
-                    : ''}
-                </Text>
+                {medicamentosDisponibles.length === 0 ? (
+                  <Text style={styles.textoVacio}>
+                    No hay medicamentos activos disponibles.
+                  </Text>
+                ) : (
+                  medicamentosDisponibles.map((item) => (
+                    <Pressable
+                      key={String(item.medicamento_id)}
+                      style={[
+                        styles.opcion,
+                        String(medicamentoSeleccionado) ===
+                          String(item.medicamento_id) &&
+                          styles.opcionSeleccionada,
+                      ]}
+                      onPress={() =>
+                        seleccionarMedicamento(
+                          item.medicamento_id
+                        )
+                      }
+                    >
+                      <View style={styles.opcionContenido}>
+                        <Text style={styles.textoOpcion}>
+                          {item.nombre_medicamento}
+                        </Text>
 
-                <TextInput
-                  style={s.input}
-                  placeholder="Dosis *"
-                  value={m.dosis}
-                  onChangeText={(v) =>
-                    actualizarMedicamento(i, 'dosis', v)
-                  }
-                  editable={!guardando}
-                />
+                        {!!item.concentracion && (
+                          <Text style={styles.textoSecundario}>
+                            {item.concentracion}
+                          </Text>
+                        )}
+                      </View>
 
-                <TextInput
-                  style={s.input}
-                  placeholder="Condición de ingesta"
-                  value={m.condicion_ingesta}
-                  onChangeText={(v) =>
-                    actualizarMedicamento(
-                      i,
-                      'condicion_ingesta',
-                      v
-                    )
-                  }
-                  editable={!guardando}
-                />
+                      {String(medicamentoSeleccionado) ===
+                        String(item.medicamento_id) && (
+                        <Text style={styles.check}>✓</Text>
+                      )}
+                    </Pressable>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          )}
 
-                <TextInput
-                  style={s.input}
-                  placeholder="Frecuencia"
-                  value={m.frecuencia}
-                  onChangeText={(v) =>
-                    actualizarMedicamento(i, 'frecuencia', v)
-                  }
-                  editable={!guardando}
-                />
+          <Pressable
+            style={styles.botonSecundario}
+            onPress={agregarMedicamento}
+          >
+            <Text style={styles.textoBotonSecundario}>
+              + Agregar medicamento
+            </Text>
+          </Pressable>
 
-                <TextInput
-                  style={s.input}
-                  placeholder="Duración del tratamiento"
-                  value={m.duracion_tratamiento}
-                  onChangeText={(v) =>
-                    actualizarMedicamento(
-                      i,
-                      'duracion_tratamiento',
-                      v
-                    )
-                  }
-                  editable={!guardando}
-                />
+          {/* MEDICAMENTOS AGREGADOS */}
+
+          {medicamentos.map((item, indice) => (
+            <View
+              key={`${item.medicamento_id}-${indice}`}
+              style={styles.itemMedicamento}
+            >
+              <View style={styles.filaTituloMedicamento}>
+                <View style={styles.columna}>
+                  <Text style={styles.nombreMedicamento}>
+                    {item.nombre_medicamento}
+                  </Text>
+
+                  {!!item.concentracion && (
+                    <Text style={styles.textoSecundario}>
+                      {item.concentracion}
+                    </Text>
+                  )}
+                </View>
 
                 <Pressable
-                  onPress={() => quitarMedicamento(i)}
-                  disabled={guardando}
+                  onPress={() => quitarMedicamento(indice)}
                 >
-                  <Text style={s.quitar}>
-                    Quitar medicamento
+                  <Text style={styles.textoEliminar}>
+                    Quitar
                   </Text>
                 </Pressable>
               </View>
-            ))}
 
-            <Pressable
-              style={[
-                s.guardar,
-                guardando && s.deshabilitado,
-              ]}
-              onPress={guardar}
-              disabled={guardando}
-            >
-              {guardando ? (
-                <ActivityIndicator color={C.blanco} />
-              ) : (
-                <Text style={s.guardarTexto}>
-                  Registrar receta médica
-                </Text>
-              )}
-            </Pressable>
+              <Campo
+                etiqueta="Dosis *"
+                valor={item.dosis}
+                cambiar={(valor) =>
+                  actualizarMedicamento(
+                    indice,
+                    'dosis',
+                    valor
+                  )
+                }
+                placeholder="Ej. 1 tableta, 2 ml..."
+              />
 
-            <Pressable
-              style={s.cancelar}
-              onPress={() => router.back()}
-              disabled={guardando}
-            >
-              <Text style={s.cancelarTexto}>Cancelar</Text>
-            </Pressable>
-          </View>
-        )}
+              <Campo
+                etiqueta="Condición de ingesta"
+                valor={item.condicion_ingesta}
+                cambiar={(valor) =>
+                  actualizarMedicamento(
+                    indice,
+                    'condicion_ingesta',
+                    valor
+                  )
+                }
+                placeholder="Ej. Después de comer"
+              />
 
-        <Text style={s.pie}>
-          PetCare · Seguimiento de atención veterinaria
-        </Text>
-      </ScrollView>
+              <Campo
+                etiqueta="Frecuencia *"
+                valor={item.frecuencia}
+                cambiar={(valor) =>
+                  actualizarMedicamento(
+                    indice,
+                    'frecuencia',
+                    valor
+                  )
+                }
+                placeholder="Ej. Cada 8 horas, cada 12 horas..."
+              />
 
-      {typeof MenuLateralDerecho === 'function' ? (
-        <MenuLateralDerecho
-          visible={menuAbierto}
-          onCerrar={() => setMenuAbierto(false)}
-          nombreUsuario={nombreUsuario}
-          rolUsuario={rolUsuario}
-          onCerrarSesion={cerrarSesion}
-        />
-      ) : menuAbierto ? (
-        <View style={s.menuAlternativo}>
-          <Pressable onPress={() => setMenuAbierto(false)}>
-            <Text style={s.cancelarTexto}>Cerrar menú ✕</Text>
-          </Pressable>
+              <Campo
+                etiqueta="Duración del tratamiento"
+                valor={item.duracion_tratamiento}
+                cambiar={(valor) =>
+                  actualizarMedicamento(
+                    indice,
+                    'duracion_tratamiento',
+                    valor
+                  )
+                }
+                placeholder="Ej. 5 días, 7 días..."
+              />
+            </View>
+          ))}
 
-          <Text style={s.menuNombre}>
-            {nombreUsuario || 'Usuario'}
+          {medicamentos.length === 0 && (
+            <Text style={styles.textoVacio}>
+              Todavía no agregaste medicamentos.
+            </Text>
+          )}
+        </View>
+
+        {/* ================================================== */}
+        {/* 3. DIETA */}
+        {/* ================================================== */}
+
+        <View style={styles.tarjeta}>
+          <Text style={styles.tituloSeccion}>
+            3. Dieta
           </Text>
 
-          <Text style={s.ayuda}>{rolUsuario}</Text>
+          <Text style={styles.descripcion}>
+            Registra las indicaciones alimentarias de la mascota.
+            Esta sección es opcional y la dieta se asociará
+            directamente a esta receta.
+          </Text>
 
-          <Pressable onPress={cerrarSesion}>
-            <Text style={s.quitar}>Cerrar sesión</Text>
+          <Text style={styles.etiqueta}>
+            Tipo de dieta
+          </Text>
+
+          <Pressable
+            style={styles.selectorReceta}
+            onPress={() =>
+              setMostrarTiposDieta((actual) => !actual)
+            }
+          >
+            <Text
+              style={[
+                styles.textoSelectorReceta,
+                !tipoDietaSeleccionado &&
+                  styles.textoPlaceholder,
+              ]}
+            >
+              {tipoDietaSeleccionado ||
+                'Seleccionar tipo de dieta'}
+            </Text>
+
+            <Text style={styles.flecha}>
+              {mostrarTiposDieta ? '▲' : '▼'}
+            </Text>
+          </Pressable>
+
+          {mostrarTiposDieta && (
+            <View style={styles.listaDesplegable}>
+              {tiposDieta.map((tipo) => (
+                <Pressable
+                  key={String(tipo.tipo_dieta_id)}
+                  style={[
+                    styles.opcion,
+                    tipoDietaSeleccionado === tipo.nombre &&
+                      styles.opcionSeleccionada,
+                  ]}
+                  onPress={() =>
+                    seleccionarTipoDieta(tipo.nombre)
+                  }
+                >
+                  <Text style={styles.textoOpcion}>
+                    {tipo.nombre}
+                  </Text>
+
+                  {tipoDietaSeleccionado === tipo.nombre && (
+                    <Text style={styles.check}>✓</Text>
+                  )}
+                </Pressable>
+              ))}
+
+              {tiposDieta.length === 0 && (
+                <Text style={styles.textoVacio}>
+                  No hay tipos de dieta activos en Supabase.
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* CAMPOS DINÁMICOS */}
+
+          {!!tipoDietaSeleccionado && (
+            <View style={styles.contenedorCamposDieta}>
+              <Text style={styles.subtituloDieta}>
+                Indicaciones: {tipoDietaSeleccionado}
+              </Text>
+
+              {obtenerCamposDieta().map((campo) => (
+                <Campo
+                  key={campo.campo}
+                  etiqueta={campo.etiqueta}
+                  valor={detalleDieta[campo.campo] || ''}
+                  cambiar={(valor) =>
+                    cambiarCampoDieta(
+                      campo.campo,
+                      valor
+                    )
+                  }
+                  placeholder={campo.placeholder}
+                  multilinea
+                />
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* ================================================== */}
+        {/* BOTONES */}
+        {/* ================================================== */}
+
+        <View style={styles.acciones}>
+          <Pressable
+            style={styles.botonCancelar}
+            onPress={solicitarCancelar}
+            disabled={guardando}
+          >
+            <Text style={styles.textoCancelar}>
+              Cancelar
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.botonGuardar,
+              guardando && styles.botonDeshabilitado,
+            ]}
+            onPress={guardar}
+            disabled={guardando}
+          >
+            {guardando ? (
+              <ActivityIndicator
+                color={COLORES.blanco}
+              />
+            ) : (
+              <Text style={styles.textoGuardar}>
+                Guardar receta
+              </Text>
+            )}
           </Pressable>
         </View>
-      ) : null}
+      </ScrollView>
+
+      {/* ================================================== */}
+      {/* MODAL */}
+      {/* ================================================== */}
+
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={cerrarModal}
+      >
+        <View style={styles.fondoModal}>
+          <View style={styles.contenidoModal}>
+            <View
+              style={[
+                styles.iconoModal,
+                modalTipo === 'exito'
+                  ? styles.iconoModalExito
+                  : styles.iconoModalCancelar,
+              ]}
+            >
+              <Text style={styles.textoIconoModal}>
+                {modalTipo === 'exito' ? '✓' : '!'}
+              </Text>
+            </View>
+
+            <Text style={styles.tituloModal}>
+              {modalTitulo}
+            </Text>
+
+            <Text style={styles.mensajeModal}>
+              {modalMensaje}
+            </Text>
+
+            {modalTipo === 'cancelar' ? (
+              <View style={styles.accionesModal}>
+                <Pressable
+                  style={styles.botonModalSecundario}
+                  onPress={cerrarModal}
+                >
+                  <Text style={styles.textoModalSecundario}>
+                    Seguir editando
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.botonModalPeligro}
+                  onPress={confirmarModal}
+                >
+                  <Text style={styles.textoModalPrincipal}>
+                    Sí, cancelar
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                style={styles.botonModalPrincipal}
+                onPress={confirmarModal}
+              >
+                <Text style={styles.textoModalPrincipal}>
+                  Volver a la atención
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-const s = StyleSheet.create({
+// ============================================================
+// COMPONENTE DE CAMPO REUTILIZABLE
+// ============================================================
+
+function Campo({
+  etiqueta,
+  valor,
+  cambiar,
+  placeholder,
+  multilinea = false,
+  teclado = 'default',
+}) {
+  return (
+    <View style={styles.campo}>
+      <Text style={styles.etiqueta}>
+        {etiqueta}
+      </Text>
+
+      <TextInput
+        style={[
+          styles.input,
+          multilinea && styles.inputMultilinea,
+        ]}
+        value={valor}
+        onChangeText={cambiar}
+        placeholder={placeholder || 'Escribir aquí'}
+        placeholderTextColor="#9AA8A3"
+        multiline={multilinea}
+        textAlignVertical={
+          multilinea ? 'top' : 'center'
+        }
+        keyboardType={teclado}
+      />
+    </View>
+  );
+}
+
+// ============================================================
+// ESTILOS
+// ============================================================
+
+const styles = StyleSheet.create({
   contenedor: {
     flex: 1,
-    backgroundColor: C.fondo,
+    backgroundColor: COLORES.fondo,
   },
 
-  encabezadoAlternativo: {
-    backgroundColor: C.verde,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  cargando: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORES.fondo,
   },
 
-  encabezadoTexto: {
-    color: C.blanco,
-    fontSize: 20,
-    fontWeight: '800',
-  },
-
-  encabezadoBoton: {
-    color: C.blanco,
-    fontSize: 25,
+  textoCargando: {
+    marginTop: 12,
+    color: COLORES.secundario,
   },
 
   contenido: {
-    padding: 20,
-    paddingBottom: 36,
+    padding: 16,
+    paddingBottom: 35,
   },
 
-  migas: {
-    color: C.verde,
-    marginBottom: 16,
+  encabezadoPagina: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+
+  botonVolver: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: COLORES.blanco,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: COLORES.borde,
+  },
+
+  textoVolver: {
+    fontSize: 32,
+    lineHeight: 35,
+    color: COLORES.primario,
+  },
+
+  titulos: {
+    flex: 1,
   },
 
   titulo: {
-    color: C.texto,
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: '800',
+    color: COLORES.texto,
   },
 
   subtitulo: {
-    color: C.secundario,
-    marginTop: 7,
-    marginBottom: 18,
-    lineHeight: 21,
+    marginTop: 4,
+    color: COLORES.secundario,
+    fontSize: 13,
   },
 
   tarjeta: {
-    backgroundColor: C.blanco,
-    borderRadius: 16,
+    backgroundColor: COLORES.blanco,
+    borderRadius: 15,
+    padding: 16,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: C.borde,
-    padding: 17,
+    borderColor: COLORES.borde,
   },
 
-  seccion: {
-    color: C.oscuro,
+  tituloSeccion: {
     fontSize: 17,
     fontWeight: '800',
-    marginTop: 20,
-    marginBottom: 8,
+    color: COLORES.primarioOscuro,
+    marginBottom: 16,
+  },
+
+  campo: {
+    marginBottom: 13,
   },
 
   etiqueta: {
-    color: C.texto,
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: 15,
-    marginBottom: 7,
-  },
-
-  ayuda: {
-    color: C.secundario,
     fontSize: 13,
-    marginBottom: 10,
+    fontWeight: '700',
+    color: COLORES.texto,
+    marginBottom: 7,
   },
 
   input: {
+    minHeight: 45,
     borderWidth: 1,
-    borderColor: C.borde,
-    borderRadius: 10,
-    padding: 12,
-    color: C.texto,
-    marginBottom: 9,
-    backgroundColor: C.blanco,
+    borderColor: COLORES.borde,
+    borderRadius: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: COLORES.texto,
+    backgroundColor: '#FCFDFC',
+    fontSize: 14,
   },
 
-  multilinea: {
-    minHeight: 82,
+  inputMultilinea: {
+    minHeight: 85,
+  },
+
+  textoFecha: {
+    color: COLORES.secundario,
+    fontSize: 12,
+    marginTop: 2,
+  },
+
+  columna: {
+    flex: 1,
+  },
+
+  // SELECTORES DESPLEGABLES
+
+  selectorReceta: {
+    minHeight: 46,
+    borderWidth: 1,
+    borderColor: COLORES.borde,
+    borderRadius: 9,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    backgroundColor: '#FCFDFC',
+  },
+
+  textoSelectorReceta: {
+    color: COLORES.texto,
+    fontSize: 13,
+    flex: 1,
+  },
+
+  textoPlaceholder: {
+    color: '#9AA8A3',
+  },
+
+  flecha: {
+    color: COLORES.primario,
+    fontWeight: '800',
+    marginLeft: 8,
+  },
+
+  listaDesplegable: {
+    borderWidth: 1,
+    borderColor: COLORES.borde,
+    borderRadius: 9,
+    marginBottom: 12,
+    overflow: 'hidden',
+    backgroundColor: COLORES.blanco,
+  },
+
+  listaMedicamentos: {
+    maxHeight: 190,
   },
 
   opcion: {
-    borderWidth: 1,
-    borderColor: C.borde,
     padding: 12,
-    borderRadius: 9,
-    marginBottom: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDF1EF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
 
-  opcionActiva: {
-    borderColor: C.verde,
-    backgroundColor: C.claro,
+  opcionSeleccionada: {
+    backgroundColor: COLORES.suave,
   },
 
-  opcionTexto: {
-    color: C.texto,
+  opcionContenido: {
+    flex: 1,
+  },
+
+  textoOpcion: {
+    color: COLORES.texto,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  textoSecundario: {
+    color: COLORES.secundario,
+    fontSize: 12,
+    marginTop: 3,
+  },
+
+  check: {
+    color: COLORES.primario,
+    fontSize: 19,
+    fontWeight: '800',
   },
 
   botonSecundario: {
+    marginTop: 2,
     borderWidth: 1,
-    borderColor: C.verde,
-    padding: 12,
+    borderColor: COLORES.primario,
     borderRadius: 9,
-    alignItems: 'center',
-    marginTop: 5,
-  },
-
-  botonSecundarioTexto: {
-    color: C.verde,
-    fontWeight: '700',
-  },
-
-  medicamento: {
-    backgroundColor: C.claro,
-    borderRadius: 10,
     padding: 12,
-    marginTop: 12,
-  },
-
-  medicamentoTitulo: {
-    color: C.oscuro,
-    fontWeight: '800',
-    marginBottom: 9,
-  },
-
-  quitar: {
-    color: C.rojo,
-    fontWeight: '700',
-    marginTop: 5,
-  },
-
-  error: {
-    color: C.rojo,
-    marginVertical: 10,
-  },
-
-  guardar: {
-    backgroundColor: C.verde,
-    padding: 15,
-    borderRadius: 10,
     alignItems: 'center',
-    marginTop: 24,
   },
 
-  deshabilitado: {
+  textoBotonSecundario: {
+    color: COLORES.primario,
+    fontWeight: '700',
+  },
+
+  // MEDICAMENTOS AGREGADOS
+
+  itemMedicamento: {
+    marginTop: 15,
+    padding: 13,
+    backgroundColor: '#F8FAF9',
+    borderWidth: 1,
+    borderColor: COLORES.borde,
+    borderRadius: 10,
+  },
+
+  filaTituloMedicamento: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+
+  nombreMedicamento: {
+    fontWeight: '800',
+    color: COLORES.texto,
+    fontSize: 14,
+  },
+
+  textoEliminar: {
+    color: COLORES.peligro,
+    fontWeight: '700',
+    padding: 5,
+  },
+
+  textoVacio: {
+    padding: 13,
+    color: COLORES.secundario,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+
+  // DIETA
+
+  descripcion: {
+    color: COLORES.secundario,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 14,
+  },
+
+  contenedorCamposDieta: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: '#F8FAF9',
+    borderWidth: 1,
+    borderColor: COLORES.borde,
+  },
+
+  subtituloDieta: {
+    color: COLORES.primarioOscuro,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 14,
+  },
+
+  // BOTONES
+
+  acciones: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 3,
+    marginBottom: 25,
+  },
+
+  botonCancelar: {
+    flex: 1,
+    minHeight: 49,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORES.borde,
+    backgroundColor: COLORES.blanco,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  textoCancelar: {
+    color: COLORES.secundario,
+    fontWeight: '800',
+  },
+
+  botonGuardar: {
+    flex: 1.5,
+    minHeight: 49,
+    borderRadius: 10,
+    backgroundColor: COLORES.primario,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  botonDeshabilitado: {
     opacity: 0.6,
   },
 
-  guardarTexto: {
-    color: C.blanco,
+  textoGuardar: {
+    color: COLORES.blanco,
     fontWeight: '800',
+    fontSize: 15,
   },
 
-  cancelar: {
-    borderWidth: 1,
-    borderColor: C.borde,
-    padding: 13,
-    borderRadius: 10,
+  // MODAL
+
+  fondoModal: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.48)',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 10,
-  },
-
-  cancelarTexto: {
-    color: C.texto,
-    fontWeight: '700',
-  },
-
-  pie: {
-    color: C.secundario,
-    textAlign: 'center',
-    fontSize: 12,
-    marginTop: 24,
-  },
-
-  menuAlternativo: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: '78%',
-    maxWidth: 320,
-    backgroundColor: C.blanco,
     padding: 22,
-    elevation: 10,
-    zIndex: 20,
   },
 
-  menuNombre: {
-    color: C.oscuro,
+  contenidoModal: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: COLORES.blanco,
+    borderRadius: 17,
+    padding: 22,
+    alignItems: 'center',
+  },
+
+  iconoModal: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 13,
+  },
+
+  iconoModalExito: {
+    backgroundColor: '#E3F4EC',
+  },
+
+  iconoModalCancelar: {
+    backgroundColor: '#FCEBE8',
+  },
+
+  textoIconoModal: {
+    fontSize: 27,
+    fontWeight: '900',
+    color: COLORES.primario,
+  },
+
+  tituloModal: {
+    fontSize: 19,
     fontWeight: '800',
-    fontSize: 18,
-    marginTop: 25,
+    color: COLORES.texto,
+    textAlign: 'center',
+  },
+
+  mensajeModal: {
+    marginTop: 9,
+    color: COLORES.secundario,
+    textAlign: 'center',
+    lineHeight: 20,
+    fontSize: 14,
+  },
+
+  accionesModal: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 22,
+    width: '100%',
+  },
+
+  botonModalSecundario: {
+    flex: 1,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORES.borde,
+    borderRadius: 9,
+    alignItems: 'center',
+  },
+
+  textoModalSecundario: {
+    color: COLORES.texto,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+
+  botonModalPeligro: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 9,
+    backgroundColor: COLORES.peligro,
+    alignItems: 'center',
+  },
+
+  botonModalPrincipal: {
+    width: '100%',
+    marginTop: 22,
+    padding: 13,
+    borderRadius: 9,
+    backgroundColor: COLORES.primario,
+    alignItems: 'center',
+  },
+
+  textoModalPrincipal: {
+    color: COLORES.blanco,
+    fontWeight: '800',
+    fontSize: 13,
+  },
+
+  textoModalSecundario: {
+    color: COLORES.texto,
+    fontWeight: '700',
+    fontSize: 12,
   },
 });

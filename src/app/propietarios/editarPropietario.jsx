@@ -1,5 +1,29 @@
 
-import React, { useCallback, useEffect, useState } from 'react';
+/**
+ * ============================================================
+ * PETCARE - EDITAR PROPIETARIO
+ * RF15: Modificar información del propietario.
+ * ============================================================
+ *
+ * Arquitectura:
+ * Vista -> DAO -> Supabase.
+ *
+ * Funcionalidades:
+ * - Consultar propietario por ID.
+ * - Validar datos personales y de contacto.
+ * - Confirmar la actualización.
+ * - Actualizar mediante el DAO.
+ * - Mostrar mensajes de éxito y error.
+ * - Compatible con Expo Web y dispositivos móviles.
+ * ============================================================
+ */
+
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+} from 'react';
+
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +37,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
@@ -22,86 +47,41 @@ import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
 import {
   consultarPropietarioPorId,
   actualizarPropietario,
-} from '../../dao/propietarioDAO';
+} from '../../dao/propietario/propietarioDAO';
 
 import { supabase } from '../../services/supabase';
-import { logger } from '../../utils/logger';
 
 // ============================================================
-// RF15: COLORES DE LA INTERFAZ
+// COLORES
 // ============================================================
+
 const C = {
   primario: '#187C72',
   primarioOscuro: '#12665E',
   fondo: '#FFFFFF',
+  fondoPantalla: '#F5F8F8',
   texto: '#243238',
   textoSecundario: '#6B7C80',
   borde: '#D9E2E3',
   error: '#C62828',
   obligatorio: '#D64545',
+  blanco: '#FFFFFF',
 };
 
 // ============================================================
-// COMPONENTE REUTILIZABLE DE CAMPO
+// COMPONENTE PRINCIPAL
 // ============================================================
-function CampoFormulario({
-  etiqueta,
-  campo,
-  valor,
-  placeholder,
-  obligatorio = false,
-  teclado = 'default',
-  multilinea = false,
-  mayusculas = 'sentences',
-  error,
-  deshabilitado = false,
-  onCambiar,
-}) {
-  return (
-    <View style={styles.grupoCampo}>
-      <Text style={styles.etiqueta}>
-        {etiqueta}
-        {obligatorio ? (
-          <Text style={styles.asterisco}> *</Text>
-        ) : null}
-      </Text>
 
-      <TextInput
-        style={[
-          styles.input,
-          multilinea && styles.inputMultilinea,
-          error && styles.inputError,
-        ]}
-        value={valor}
-        onChangeText={(texto) => onCambiar(campo, texto)}
-        placeholder={placeholder}
-        placeholderTextColor="#99A5A8"
-        keyboardType={teclado}
-        multiline={multilinea}
-        editable={!deshabilitado}
-        autoCapitalize={mayusculas}
-        autoCorrect={campo === 'observaciones' || campo === 'direccion'}
-        textAlignVertical={multilinea ? 'top' : 'center'}
-        maxLength={campo === 'documento_identidad' ? 8 : undefined}
-        underlineColorAndroid="transparent"
-        blurOnSubmit={!multilinea}
-        returnKeyType={multilinea ? 'default' : 'next'}
-        accessibilityLabel={etiqueta}
-      />
-
-      {error ? (
-        <Text style={styles.textoError}>{error}</Text>
-      ) : null}
-    </View>
-  );
-}
-
-// ============================================================
-// PANTALLA: EDITAR INFORMACIÓN DEL PROPIETARIO
-// ============================================================
 export default function EditarPropietario() {
   const parametros = useLocalSearchParams();
-  const propietarioId = parametros.propietarioId;
+
+  const propietarioId = Array.isArray(parametros.propietarioId)
+    ? parametros.propietarioId[0]
+    : parametros.propietarioId;
+
+  // ----------------------------------------------------------
+  // ESTADOS
+  // ----------------------------------------------------------
 
   const [formulario, setFormulario] = useState({
     nombre: '',
@@ -119,140 +99,164 @@ export default function EditarPropietario() {
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
+
   const [errores, setErrores] = useState({});
 
-  // ==========================================================
-  // CARGAR EL PERFIL DEL USUARIO AUTENTICADO
-  // ==========================================================
-  const cargarPerfil = useCallback(async () => {
-    try {
-      const {
-        data: { user },
-        error: errorUsuario,
-      } = await supabase.auth.getUser();
+  // ----------------------------------------------------------
+  // CARGAR PERFIL DEL USUARIO
+  // ----------------------------------------------------------
 
-      if (errorUsuario) {
-        throw errorUsuario;
+  const cargarPerfilUsuario = useCallback(async () => {
+    try {
+      const { data: sesionData, error: sesionError } =
+        await supabase.auth.getUser();
+
+      if (sesionError) {
+        throw sesionError;
       }
 
-      if (!user) {
-        setNombreUsuario('Usuario');
-        setRolUsuario('');
+      const usuario = sesionData?.user;
+
+      if (!usuario) {
         return;
       }
 
       const { data, error } = await supabase
         .from('perfiles')
         .select('nombre_completo, rol')
-        .eq('perfil_id', user.id)
+        .eq('perfil_id', usuario.id)
         .maybeSingle();
 
       if (error) {
         throw error;
       }
 
-      setNombreUsuario(
-        data?.nombre_completo || user.email || 'Usuario',
-      );
-      setRolUsuario(data?.rol || '');
+      if (data) {
+        setNombreUsuario(data.nombre_completo ?? '');
+        setRolUsuario(data.rol ?? '');
+      }
     } catch (error) {
-      logger.error('Error al cargar el perfil:', error);
-      setNombreUsuario('Usuario');
-      setRolUsuario('');
+      console.error(
+        'Error al cargar perfil del usuario:',
+        error
+      );
     }
   }, []);
 
-  // ==========================================================
-  // CARGAR LOS DATOS DEL PROPIETARIO
-  // ==========================================================
+  // ----------------------------------------------------------
+  // CARGAR PROPIETARIO
+  // ----------------------------------------------------------
+
   const cargarPropietario = useCallback(async () => {
     if (!propietarioId) {
-      setCargando(false);
-
       Alert.alert(
-        'Información no disponible',
-        'No se recibió el identificador del propietario.',
-        [{ text: 'Aceptar', onPress: () => router.back() }],
+        'Identificador requerido',
+        'No se recibió el identificador del propietario.'
       );
+
+      setCargando(false);
       return;
     }
 
     try {
       setCargando(true);
 
-      const resultado = await consultarPropietarioPorId(propietarioId);
-      const propietario = resultado?.data ?? resultado;
+      const propietario = await consultarPropietarioPorId(
+        propietarioId
+      );
 
-      if (!propietario || propietario.error) {
+      if (!propietario) {
         throw new Error(
-          'No se encontró la información del propietario.',
+          'No se encontró la información del propietario.'
         );
       }
 
       setFormulario({
-        nombre: propietario.nombre || '',
-        apellido: propietario.apellido || '',
-        documento_identidad: propietario.documento_identidad || '',
-        telefono: propietario.telefono || '',
-        correo: propietario.correo || '',
-        direccion: propietario.direccion || '',
-        observaciones: propietario.observaciones || '',
+        nombre: propietario.nombre ?? '',
+        apellido: propietario.apellido ?? '',
+        documento_identidad:
+          propietario.documento_identidad ?? '',
+        telefono: String(propietario.telefono ?? '')
+          .replace(/^\+51/, ''),
+        correo: propietario.correo ?? '',
+        direccion: propietario.direccion ?? '',
+        observaciones: propietario.observaciones ?? '',
       });
-
-      setErrores({});
     } catch (error) {
-      logger.error('Error al cargar propietario:', error);
+      console.error(
+        'Error al cargar propietario:',
+        error
+      );
 
       Alert.alert(
-        'Error',
-        error?.message ||
-          'No fue posible cargar los datos del propietario.',
-        [{ text: 'Aceptar', onPress: () => router.back() }],
+        'Error al cargar',
+        error.message ||
+          'No fue posible cargar la información del propietario.'
       );
     } finally {
       setCargando(false);
     }
   }, [propietarioId]);
 
-  useEffect(() => {
-    cargarPerfil();
-    cargarPropietario();
-  }, [cargarPerfil, cargarPropietario]);
+  // ----------------------------------------------------------
+  // EFECTO INICIAL
+  // ----------------------------------------------------------
 
-  // ==========================================================
-  // ACTUALIZAR EL VALOR DE UN CAMPO
-  // ==========================================================
-  const cambiarCampo = (campo, valor) => {
-    setFormulario((anterior) => ({
-      ...anterior,
+  useEffect(() => {
+    cargarPerfilUsuario();
+    cargarPropietario();
+  }, [cargarPerfilUsuario, cargarPropietario]);
+
+  // ----------------------------------------------------------
+  // ACTUALIZAR CAMPO
+  // ----------------------------------------------------------
+
+  const actualizarCampo = (campo, valor) => {
+    setFormulario((actual) => ({
+      ...actual,
       [campo]: valor,
     }));
 
-    setErrores((anteriores) => ({
-      ...anteriores,
+    setErrores((actual) => ({
+      ...actual,
       [campo]: '',
-      general: '',
     }));
   };
 
-  // ==========================================================
-  // VALIDAR EL FORMULARIO — RF15 / CP02 / CP03
-  // ==========================================================
+  // ----------------------------------------------------------
+  // NORMALIZAR TELÉFONO
+  // ----------------------------------------------------------
+
+  const normalizarTelefono = (telefono) => {
+    return String(telefono ?? '')
+      .trim()
+      .replace(/[\s()-]/g, '')
+      .replace(/^\+51/, '');
+  };
+
+  // ----------------------------------------------------------
+  // VALIDAR FORMULARIO
+  // ----------------------------------------------------------
+
   const validarFormulario = () => {
     const nuevosErrores = {};
 
     const nombre = formulario.nombre.trim();
     const apellido = formulario.apellido.trim();
     const dni = formulario.documento_identidad.trim();
-    const telefono = formulario.telefono.trim().replace(/\s/g, '');
+    const telefono = normalizarTelefono(
+      formulario.telefono
+    );
     const correo = formulario.correo.trim();
 
     if (!nombre) {
-      nuevosErrores.nombre = 'Ingrese los nombres del propietario.';
+      nuevosErrores.nombre =
+        'Ingrese el nombre del propietario.';
     }
 
     if (!apellido) {
-      nuevosErrores.apellido = 'Ingrese los apellidos del propietario.';
+      nuevosErrores.apellido =
+        'Ingrese el apellido del propietario.';
     }
 
     if (!/^\d{8}$/.test(dni)) {
@@ -260,9 +264,9 @@ export default function EditarPropietario() {
         'El DNI debe contener exactamente 8 dígitos.';
     }
 
-    if (telefono && !/^(\+51)?9\d{8}$/.test(telefono)) {
+    if (!/^9\d{8}$/.test(telefono)) {
       nuevosErrores.telefono =
-        'Ingrese un celular válido de 9 dígitos.';
+        'El teléfono debe tener 9 dígitos e iniciar con 9.';
     }
 
     if (
@@ -275,63 +279,61 @@ export default function EditarPropietario() {
 
     setErrores(nuevosErrores);
 
-    if (Object.keys(nuevosErrores).length > 0) {
-      const faltanObligatorios = !nombre || !apellido;
-
-      Alert.alert(
-        'Revise el formulario',
-        faltanObligatorios
-          ? 'Complete los campos obligatorios para continuar.'
-          : 'Verifique el formato de los datos ingresados.',
-      );
-
-      return false;
-    }
-
-    return true;
+    return Object.keys(nuevosErrores).length === 0;
   };
 
-  // ==========================================================
-  // GUARDAR LOS CAMBIOS — RF15 / CP01 / CP04 / CP05
-  // ==========================================================
+  // ----------------------------------------------------------
+  // PREPARAR DATOS ACTUALIZADOS
+  // ----------------------------------------------------------
+
+  const obtenerDatosActualizados = () => ({
+    nombre: formulario.nombre.trim(),
+    apellido: formulario.apellido.trim(),
+    documento_identidad:
+      formulario.documento_identidad.trim(),
+    telefono: normalizarTelefono(formulario.telefono),
+    correo: formulario.correo.trim(),
+    direccion: formulario.direccion.trim(),
+    observaciones: formulario.observaciones.trim(),
+  });
+
+  // ----------------------------------------------------------
+  // ACTUALIZAR PROPIETARIO
+  // ----------------------------------------------------------
+
   const guardarCambios = async () => {
     if (guardando) {
       return;
     }
 
     if (!validarFormulario()) {
+      Alert.alert(
+        'Datos inválidos',
+        'Verifique el formato de los datos ingresados.'
+      );
+
       return;
     }
 
     if (!propietarioId) {
       Alert.alert(
-        'No se pudo actualizar',
-        'No se recibió el identificador del propietario.',
+        'Identificador requerido',
+        'No se puede actualizar el propietario porque falta su identificador.'
       );
+
       return;
     }
-
-    const datosActualizados = {
-      nombre: formulario.nombre.trim(),
-      apellido: formulario.apellido.trim(),
-      documento_identidad: formulario.documento_identidad.trim(),
-      telefono: formulario.telefono.trim(),
-      correo: formulario.correo.trim(),
-      direccion: formulario.direccion.trim(),
-      observaciones: formulario.observaciones.trim(),
-    };
 
     try {
       setGuardando(true);
 
-      const resultado = await actualizarPropietario(
-        propietarioId,
-        datosActualizados,
-      );
+      const datosActualizados =
+        obtenerDatosActualizados();
 
-      if (resultado?.error) {
-        throw resultado.error;
-      }
+      await actualizarPropietario(
+        propietarioId,
+        datosActualizados
+      );
 
       Alert.alert(
         'Actualización exitosa',
@@ -348,90 +350,221 @@ export default function EditarPropietario() {
               });
             },
           },
-        ],
+        ]
       );
     } catch (error) {
-      logger.error('Error al actualizar propietario:', error);
+      console.error(
+        'Error al actualizar propietario:',
+        error
+      );
 
-      let mensajeError =
+      let mensaje =
+        error?.message ||
         'No se pudieron guardar los cambios. Intente nuevamente.';
 
-      if (
-        error?.code === 'DUPLICADO_DNI' ||
-        error?.code === 'DUPLICADO_CORREO' ||
-        error?.code === '23505' ||
-        /ya se encuentra registrado|ya existe/i.test(
-          error?.message || '',
-        )
+      if (error?.code === 'DUPLICADO_DNI') {
+        mensaje =
+          'El propietario ya se encuentra registrado.';
+      } else if (error?.code === 'DUPLICADO_CORREO') {
+        mensaje =
+          'El correo electrónico ya se encuentra registrado por otro propietario.';
+      } else if (error?.code === 'DATOS_INVALIDOS') {
+        mensaje =
+          'Los datos ingresados no cumplen las validaciones requeridas.';
+      } else if (
+        error?.code === '42501' ||
+        error?.code === 'PGRST301'
       ) {
-        mensajeError = 'El propietario ya se encuentra registrado.';
+        mensaje =
+          'No tienes permisos para modificar este propietario. Verifica tu sesión y los permisos de acceso.';
       }
 
-      Alert.alert('No se pudo actualizar', mensajeError);
+      Alert.alert('Error al actualizar', mensaje);
     } finally {
       setGuardando(false);
     }
   };
 
-  // ==========================================================
-  // CONFIRMAR ANTES DE GUARDAR
-  // ==========================================================
-const confirmarActualizacion = () => {
-  // RF15: validar antes de solicitar la confirmación.
-  // Si hay errores, no se debe abrir el diálogo de confirmación.
-  if (!validarFormulario()) {
-    return;
-  }
+  // ----------------------------------------------------------
+  // CONFIRMAR ACTUALIZACIÓN
+  // ----------------------------------------------------------
 
-  Alert.alert(
-    'Confirmar cambios',
-    '¿Desea guardar la información modificada del propietario?',
-    [
-      {
-        text: 'Cancelar',
-        style: 'cancel',
-      },
-      {
-        text: 'Guardar',
-        onPress: guardarCambios,
-      },
-    ],
+  const confirmarActualizacion = () => {
+    const nombre = formulario.nombre.trim();
+    const apellido = formulario.apellido.trim();
+    const dni = formulario.documento_identidad.trim();
+    const telefono = normalizarTelefono(
+      formulario.telefono
+    );
+    const correo = formulario.correo.trim();
+
+    // Validación de campos obligatorios.
+    if (!nombre || !apellido || !dni || !telefono) {
+      validarFormulario();
+
+      Alert.alert(
+        'Datos incompletos',
+        'Complete los campos obligatorios para continuar.'
+      );
+
+      return;
+    }
+
+    // Validación de formatos.
+    if (
+      !/^\d{8}$/.test(dni) ||
+      !/^9\d{8}$/.test(telefono) ||
+      (
+        correo &&
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)
+      )
+    ) {
+      validarFormulario();
+
+      Alert.alert(
+        'Datos inválidos',
+        'Verifique el formato de los datos ingresados.'
+      );
+
+      return;
+    }
+
+    // Confirmación antes de actualizar.
+    Alert.alert(
+      'Confirmar cambios',
+      '¿Estás seguro de que deseas guardar los cambios realizados en los datos del propietario?',
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Guardar',
+          onPress: guardarCambios,
+        },
+      ]
+    );
+  };
+
+  // ----------------------------------------------------------
+  // VOLVER
+  // ----------------------------------------------------------
+
+  const volver = () => {
+    router.back();
+  };
+
+  // ----------------------------------------------------------
+  // CAMPO REUTILIZABLE
+  // ----------------------------------------------------------
+
+  const renderCampo = ({
+    etiqueta,
+    campo,
+    placeholder,
+    multiline = false,
+    teclado = 'default',
+    maxLength,
+  }) => (
+    <View style={styles.grupoCampo} key={campo}>
+      <Text style={styles.etiqueta}>
+        {etiqueta}
+
+        {[
+          'nombre',
+          'apellido',
+          'documento_identidad',
+          'telefono',
+        ].includes(campo) && (
+          <Text style={styles.obligatorio}> *</Text>
+        )}
+      </Text>
+
+      <TextInput
+        style={[
+          styles.input,
+          multiline && styles.inputMultilinea,
+          errores[campo] ? styles.inputError : null,
+        ]}
+        value={formulario[campo]}
+        onChangeText={(valor) =>
+          actualizarCampo(campo, valor)
+        }
+        placeholder={placeholder}
+        placeholderTextColor="#9AA8AA"
+        keyboardType={teclado}
+        multiline={multiline}
+        numberOfLines={multiline ? 4 : 1}
+        maxLength={maxLength}
+        editable={!guardando}
+        autoCapitalize={
+          campo === 'correo' ? 'none' : 'sentences'
+        }
+        textAlignVertical={
+          multiline ? 'top' : 'center'
+        }
+      />
+
+      {!!errores[campo] && (
+        <Text style={styles.textoError}>
+          {errores[campo]}
+        </Text>
+      )}
+    </View>
   );
-};
-  // ==========================================================
-  // VISTA DE CARGA
-  // ==========================================================
+
+  // ----------------------------------------------------------
+  // PANTALLA DE CARGA
+  // ----------------------------------------------------------
+
   if (cargando) {
     return (
-      <SafeAreaView
-        style={styles.pantallaCarga}
-        edges={['top', 'left', 'right']}
-      >
+      <SafeAreaView style={styles.contenedorPrincipal}>
         <StatusBar
-          barStyle="dark-content"
-          backgroundColor={C.fondo}
+          backgroundColor={C.primarioOscuro}
+          barStyle="light-content"
         />
 
-        <ActivityIndicator size="large" color={C.primario} />
+        <EncabezadoPetCare
+          onAbrirMenu={() => setMenuAbierto(true)}
+          onAbrirNotificaciones={() =>
+            Alert.alert(
+              'Notificaciones',
+              'No hay notificaciones nuevas.'
+            )
+          }
+        />
 
-        <Text style={styles.textoCargando}>
-          Cargando información del propietario...
-        </Text>
+        <View style={styles.pantallaCarga}>
+          <ActivityIndicator
+            size="large"
+            color={C.primario}
+          />
+
+          <Text style={styles.textoCargando}>
+            Cargando información del propietario...
+          </Text>
+        </View>
+
+        <MenuLateralDerecho
+          visible={menuAbierto}
+          onCerrar={() => setMenuAbierto(false)}
+          nombreUsuario={nombreUsuario}
+          rolUsuario={rolUsuario}
+        />
       </SafeAreaView>
     );
   }
 
-  // ==========================================================
-  // INTERFAZ PRINCIPAL
-  // ==========================================================
+  // ----------------------------------------------------------
+  // VISTA PRINCIPAL
+  // ----------------------------------------------------------
+
   return (
-    <SafeAreaView
-      style={styles.contenedorPrincipal}
-      edges={['top', 'left', 'right']}
-    >
+    <SafeAreaView style={styles.contenedorPrincipal}>
       <StatusBar
-        barStyle="dark-content"
-        backgroundColor={C.fondo}
+        backgroundColor={C.primarioOscuro}
+        barStyle="light-content"
       />
 
       <EncabezadoPetCare
@@ -439,159 +572,169 @@ const confirmarActualizacion = () => {
         onAbrirNotificaciones={() =>
           Alert.alert(
             'Notificaciones',
-            'No hay notificaciones nuevas.',
+            'No hay notificaciones nuevas.'
           )
         }
       />
 
       <KeyboardAvoidingView
         style={styles.teclado}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={
+          Platform.OS === 'ios' ? 'padding' : undefined
+        }
       >
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.contenidoScroll}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="none"
           showsVerticalScrollIndicator={false}
         >
+          {/* MIGAS DE PAN */}
+
           <View style={styles.migas}>
-            <Text style={styles.migaInicio}>Propietarios</Text>
-            <Text style={styles.separadorMigas}> / </Text>
-            <Text style={styles.migaActual}>Editar información</Text>
+            <Text style={styles.textoMiga}>
+              Propietarios
+            </Text>
+
+            <Text style={styles.separadorMiga}>
+              {' / '}
+            </Text>
+
+            <Text style={styles.textoMigaActivo}>
+              Editar propietario
+            </Text>
           </View>
+
+          {/* TÍTULO */}
 
           <View style={styles.filaTitulo}>
-            <TouchableOpacity
-              style={styles.botonVolver}
-              onPress={() => router.back()}
-              disabled={guardando}
-              accessibilityLabel="Volver"
-            >
-              <Text style={styles.flechaVolver}>‹</Text>
-            </TouchableOpacity>
+            <View style={styles.bloqueTitulo}>
+              <Text style={styles.titulo}>
+                Editar propietario
+              </Text>
 
-            <View style={styles.contenedorTitulo}>
-              <Text style={styles.titulo}>Editar información</Text>
               <Text style={styles.subtitulo}>
-                Modifique los datos del propietario.
+                Modifica la información personal y de contacto
+                del propietario.
               </Text>
             </View>
+
+            <TouchableOpacity
+              style={styles.botonVolver}
+              onPress={volver}
+              disabled={guardando}
+            >
+              <Text style={styles.textoBotonVolver}>
+                Volver
+              </Text>
+            </TouchableOpacity>
           </View>
 
+          {/* FORMULARIO */}
+
           <View style={styles.contenedorFormulario}>
-            <Text style={styles.textoAyuda}>
+            <Text style={styles.tituloSeccion}>
+              Información personal
+            </Text>
+
+            <Text style={styles.descripcionSeccion}>
               Los campos marcados con * son obligatorios.
             </Text>
 
-            <CampoFormulario
-              etiqueta="Nombres"
-              campo="nombre"
-              valor={formulario.nombre}
-              placeholder="Ingrese los nombres"
-              obligatorio
-              error={errores.nombre}
-              deshabilitado={guardando}
-              onCambiar={cambiarCampo}
-            />
+            {renderCampo({
+              etiqueta: 'Nombre',
+              campo: 'nombre',
+              placeholder: 'Ingrese el nombre',
+              maxLength: 100,
+            })}
 
-            <CampoFormulario
-              etiqueta="Apellidos"
-              campo="apellido"
-              valor={formulario.apellido}
-              placeholder="Ingrese los apellidos"
-              obligatorio
-              error={errores.apellido}
-              deshabilitado={guardando}
-              onCambiar={cambiarCampo}
-            />
+            {renderCampo({
+              etiqueta: 'Apellido',
+              campo: 'apellido',
+              placeholder: 'Ingrese el apellido',
+              maxLength: 100,
+            })}
 
-            <CampoFormulario
-              etiqueta="DNI"
-              campo="documento_identidad"
-              valor={formulario.documento_identidad}
-              placeholder="Ingrese los 8 dígitos del DNI"
-              obligatorio
-              teclado="numeric"
-              mayusculas="none"
-              error={errores.documento_identidad}
-              deshabilitado={guardando}
-              onCambiar={cambiarCampo}
-            />
+            {renderCampo({
+              etiqueta: 'Documento de identidad (DNI)',
+              campo: 'documento_identidad',
+              placeholder: 'Ingrese los 8 dígitos del DNI',
+              teclado: 'numeric',
+              maxLength: 8,
+            })}
 
-            <CampoFormulario
-              etiqueta="Teléfono"
-              campo="telefono"
-              valor={formulario.telefono}
-              placeholder="Ingrese el número de celular"
-              teclado="phone-pad"
-              mayusculas="none"
-              error={errores.telefono}
-              deshabilitado={guardando}
-              onCambiar={cambiarCampo}
-            />
+            <View style={styles.separadorFormulario} />
 
-            <CampoFormulario
-              etiqueta="Correo electrónico"
-              campo="correo"
-              valor={formulario.correo}
-              placeholder="ejemplo@correo.com"
-              teclado="email-address"
-              mayusculas="none"
-              error={errores.correo}
-              deshabilitado={guardando}
-              onCambiar={cambiarCampo}
-            />
+            <Text style={styles.tituloSeccion}>
+              Información de contacto
+            </Text>
 
-            <CampoFormulario
-              etiqueta="Dirección"
-              campo="direccion"
-              valor={formulario.direccion}
-              placeholder="Ingrese la dirección del propietario"
-              deshabilitado={guardando}
-              onCambiar={cambiarCampo}
-            />
+            {renderCampo({
+              etiqueta: 'Teléfono',
+              campo: 'telefono',
+              placeholder: 'Ingrese el número de celular',
+              teclado: 'phone-pad',
+              maxLength: 9,
+            })}
 
-            <CampoFormulario
-              etiqueta="Observaciones"
-              campo="observaciones"
-              valor={formulario.observaciones}
-              placeholder="Ingrese observaciones adicionales (opcional)"
-              multilinea
-              deshabilitado={guardando}
-              onCambiar={cambiarCampo}
-            />
+            {renderCampo({
+              etiqueta: 'Correo electrónico',
+              campo: 'correo',
+              placeholder: 'ejemplo@correo.com',
+              teclado: 'email-address',
+              maxLength: 150,
+            })}
+
+            {renderCampo({
+              etiqueta: 'Dirección',
+              campo: 'direccion',
+              placeholder: 'Ingrese la dirección',
+              maxLength: 250,
+            })}
+
+            <View style={styles.separadorFormulario} />
+
+            <Text style={styles.tituloSeccion}>
+              Información adicional
+            </Text>
+
+            {renderCampo({
+              etiqueta: 'Observaciones',
+              campo: 'observaciones',
+              placeholder:
+                'Ingrese observaciones adicionales (opcional)',
+              multiline: true,
+              maxLength: 1000,
+            })}
+
+            {/* BOTONES */}
 
             <View style={styles.contenedorBotones}>
               <TouchableOpacity
-                style={[
-                  styles.boton,
-                  styles.botonCancelar,
-                  guardando && styles.botonDeshabilitado,
-                ]}
-                onPress={() => router.back()}
+                style={styles.botonCancelar}
+                onPress={volver}
                 disabled={guardando}
               >
-                <Text style={styles.textoCancelar}>Cancelar</Text>
+                <Text style={styles.textoBotonCancelar}>
+                  Cancelar
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[
-                  styles.boton,
                   styles.botonGuardar,
                   guardando && styles.botonDeshabilitado,
                 ]}
                 onPress={confirmarActualizacion}
                 disabled={guardando}
-                accessibilityRole="button"
               >
                 {guardando ? (
                   <ActivityIndicator
-                    color="#FFFFFF"
+                    color={C.blanco}
                     size="small"
                   />
                 ) : (
-                  <Text style={styles.textoGuardar}>
+                  <Text style={styles.textoBotonGuardar}>
                     Guardar cambios
                   </Text>
                 )}
@@ -616,17 +759,18 @@ const confirmarActualizacion = () => {
 // ============================================================
 // ESTILOS
 // ============================================================
+
 const styles = StyleSheet.create({
   contenedorPrincipal: {
     flex: 1,
-    backgroundColor: C.fondo,
+    backgroundColor: C.fondoPantalla,
   },
 
   pantallaCarga: {
     flex: 1,
-    backgroundColor: C.fondo,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
   },
 
   textoCargando: {
@@ -644,91 +788,101 @@ const styles = StyleSheet.create({
   },
 
   contenidoScroll: {
-    flexGrow: 1,
-    paddingHorizontal: 18,
-    paddingTop: 17,
-    paddingBottom: 10,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 30,
   },
 
   migas: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    marginBottom: 19,
+    marginBottom: 20,
   },
 
-  migaInicio: {
-    fontSize: 12,
+  textoMiga: {
+    fontSize: 13,
     color: C.textoSecundario,
   },
 
-  separadorMigas: {
-    fontSize: 12,
+  separadorMiga: {
+    fontSize: 13,
     color: C.textoSecundario,
   },
 
-  migaActual: {
-    fontSize: 12,
+  textoMigaActivo: {
+    fontSize: 13,
     color: C.primario,
     fontWeight: '600',
   },
 
   filaTitulo: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 23,
-    width: '100%',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 22,
   },
 
-  botonVolver: {
-    width: 35,
-    height: 42,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-
-  flechaVolver: {
-    fontSize: 38,
-    lineHeight: 42,
-    color: C.primario,
-    fontWeight: '400',
-  },
-
-  contenedorTitulo: {
+  bloqueTitulo: {
     flex: 1,
-    justifyContent: 'center',
+    minWidth: 200,
   },
 
   titulo: {
-    fontSize: 21,
+    fontSize: 25,
     fontWeight: '700',
     color: C.texto,
+    marginBottom: 7,
   },
 
   subtitulo: {
-    fontSize: 13,
+    fontSize: 14,
     color: C.textoSecundario,
-    marginTop: 5,
+    lineHeight: 21,
+  },
+
+  botonVolver: {
+    borderWidth: 1,
+    borderColor: C.borde,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    backgroundColor: C.blanco,
+  },
+
+  textoBotonVolver: {
+    color: C.texto,
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   contenedorFormulario: {
+    backgroundColor: C.blanco,
+    borderRadius: 12,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: C.borde,
     width: '100%',
-    alignSelf: 'stretch',
-    backgroundColor: 'transparent',
-    padding: 0,
-    margin: 0,
+    maxWidth: 950,
+    alignSelf: 'center',
   },
 
-  textoAyuda: {
+  tituloSeccion: {
+    fontSize: 17,
+    color: C.texto,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+
+  descripcionSeccion: {
+    fontSize: 13,
     color: C.textoSecundario,
-    fontSize: 12,
     marginBottom: 20,
   },
 
   grupoCampo: {
-    width: '100%',
-    marginBottom: 19,
+    marginBottom: 18,
   },
 
   etiqueta: {
@@ -738,21 +892,19 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
-  asterisco: {
+  obligatorio: {
     color: C.obligatorio,
-    fontWeight: '700',
   },
 
   input: {
-    width: '100%',
-    minHeight: 48,
+    minHeight: 46,
     borderWidth: 1,
     borderColor: C.borde,
     borderRadius: 8,
-    backgroundColor: '#FFFFFF',
     paddingHorizontal: 13,
     paddingVertical: 11,
     color: C.texto,
+    backgroundColor: C.blanco,
     fontSize: 14,
   },
 
@@ -768,54 +920,65 @@ const styles = StyleSheet.create({
   textoError: {
     color: C.error,
     fontSize: 12,
-    marginTop: 5,
+    marginTop: 6,
+  },
+
+  separadorFormulario: {
+    height: 1,
+    backgroundColor: C.borde,
+    marginVertical: 15,
   },
 
   contenedorBotones: {
-    width: '100%',
     flexDirection: 'row',
     justifyContent: 'flex-end',
     flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 8,
-  },
-
-  boton: {
-    minHeight: 46,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: 12,
+    marginTop: 16,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: C.borde,
   },
 
   botonCancelar: {
+    minWidth: 120,
+    minHeight: 45,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: C.borde,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 18,
+    backgroundColor: C.blanco,
   },
 
-  textoCancelar: {
+  textoBotonCancelar: {
     color: C.texto,
     fontSize: 14,
     fontWeight: '600',
   },
 
   botonGuardar: {
+    minWidth: 160,
+    minHeight: 45,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    paddingHorizontal: 20,
     backgroundColor: C.primario,
-    minWidth: 145,
   },
 
-  textoGuardar: {
-    color: '#FFFFFF',
+  botonDeshabilitado: {
+    opacity: 0.65,
+  },
+
+  textoBotonGuardar: {
+    color: C.blanco,
     fontSize: 14,
     fontWeight: '700',
   },
 
-  botonDeshabilitado: {
-    opacity: 0.6,
-  },
-
   espacioFinal: {
-    height: 35,
+    height: 25,
   },
 });

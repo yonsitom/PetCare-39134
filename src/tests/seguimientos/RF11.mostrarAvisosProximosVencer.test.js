@@ -14,7 +14,7 @@
 
 import {
   crearAvisosProximosVencerService,
-} from '../../services/avisosProximosVencerServicio';
+} from '../../services/atencion/avisosProximosVencerServicio';
 
 describe('RF11 - Mostrar avisos próximos a vencer', () => {
   let repositorio;

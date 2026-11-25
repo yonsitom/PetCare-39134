@@ -6,7 +6,7 @@ jest.mock('../../services/supabase', () => ({
 }));
 
 import { supabase } from '../../services/supabase';
-import { consultarIndicadoresInicio } from '../../services/panelInicioServicio';
+import { consultarIndicadoresInicio } from '../../services/autentificacion/panelInicioServicio';
 
 const crearConsulta = (resultado) => {
   const consulta = {

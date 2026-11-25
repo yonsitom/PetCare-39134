@@ -20,11 +20,10 @@ import {
   actualizarPerfilUsuario,
   MENSAJES_RF05,
   validarDatosPerfil,
-} from '../../services/perfilServicio';
+} from '../../services/autentificacion/perfilServicio';
 
 import EncabezadoPetCare from '../layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../layout/MenuLateralDerecho';
-import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -128,7 +127,11 @@ export default function PantallaEditarPerfil({
   const [error, setError] = useState('');
   const [campoError, setCampoError] = useState(null);
   const [menuVisible, setMenuVisible] = useState(false);
+
   const [modalConfirmacionVisible, setModalConfirmacionVisible] =
+    useState(false);
+
+  const [modalCorreoEnviadoVisible, setModalCorreoEnviadoVisible] =
     useState(false);
 
   const volver = useCallback(() => {
@@ -190,7 +193,7 @@ export default function PantallaEditarPerfil({
       setEstadoCuenta(data.estado_cuenta || '');
       setFechaRegistro(data.fecha_registro || '');
     } catch (e) {
-      logger.error('RF05: error al cargar perfil:', e);
+      console.error('RF05: error al cargar perfil:', e);
       setError(
         e?.message === 'No se encontró una sesión activa.'
           ? e.message
@@ -210,7 +213,6 @@ export default function PantallaEditarPerfil({
     }
   }
 
-  // Desplaza el formulario hasta el campo que debe corregirse.
   function enfocarCampo(campo) {
     setCampoError(campo);
 
@@ -255,7 +257,6 @@ export default function PantallaEditarPerfil({
     return /^9\d{8}$/.test(valor.trim());
   }
 
-  // Valida los campos antes de mostrar la confirmación.
   function solicitarConfirmacion() {
     setError('');
     setCampoError(null);
@@ -281,7 +282,10 @@ export default function PantallaEditarPerfil({
     setModalConfirmacionVisible(true);
   }
 
-  // Guarda los cambios confirmados.
+  // ==========================================================
+  // RF05 - GUARDAR LOS CAMBIOS DEL PERFIL
+  // ==========================================================
+
   async function guardarPerfil() {
     if (!perfilId || guardando) return;
 
@@ -291,6 +295,7 @@ export default function PantallaEditarPerfil({
       setError(
         'El teléfono debe contener exactamente 9 dígitos y comenzar por 9.'
       );
+      setModalConfirmacionVisible(false);
       enfocarCampo('telefono');
       return;
     }
@@ -310,30 +315,15 @@ export default function PantallaEditarPerfil({
       setModalConfirmacionVisible(false);
 
       if (resultado.requiereVerificacionCorreo) {
-        // Mantiene la confirmación de verificación del correo.
-        setGuardando(false);
-
-        setTimeout(() => {
-          import('react-native').then(({ Alert }) => {
-            Alert.alert(
-              'Confirma tu correo electrónico',
-              resultado.mensaje,
-              [
-                {
-                  text: 'Continuar',
-                  onPress: () => onGuardado?.(),
-                },
-              ]
-            );
-          });
-        }, 100);
-
+        // Mostrar modal propio de PetCare.
+        // No se actualiza correoOriginal porque aún falta confirmarlo.
+        setModalCorreoEnviadoVisible(true);
         return;
       }
 
       onGuardado?.();
     } catch (e) {
-      logger.error('RF05: error al guardar perfil:', e);
+      console.error('RF05: error al guardar perfil:', e);
 
       const mensaje = e?.message || MENSAJES_RF05.guardar;
 
@@ -371,6 +361,15 @@ export default function PantallaEditarPerfil({
     } finally {
       setGuardando(false);
     }
+  }
+
+  // ==========================================================
+  // RF05 - CERRAR MODAL DE CORREO ENVIADO
+  // ==========================================================
+
+  function cerrarModalCorreoEnviado() {
+    setModalCorreoEnviadoVisible(false);
+    onGuardado?.();
   }
 
   if (cargando) {
@@ -616,7 +615,7 @@ export default function PantallaEditarPerfil({
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Modal personalizado de confirmación */}
+      {/* Modal para confirmar el guardado */}
       <Modal
         visible={modalConfirmacionVisible}
         transparent
@@ -672,6 +671,70 @@ export default function PantallaEditarPerfil({
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* =====================================================
+          RF05 - MODAL DE CORREO DE CONFIRMACIÓN ENVIADO
+      ====================================================== */}
+      <Modal
+        visible={modalCorreoEnviadoVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={cerrarModalCorreoEnviado}
+      >
+        <View style={styles.modalFondo}>
+          <View style={styles.modalTarjeta}>
+            <View style={styles.modalIconoExito}>
+              <Text style={styles.modalIconoExitoTexto}>✉</Text>
+            </View>
+
+            <Text style={styles.modalTitulo}>
+              ¡Correo enviado!
+            </Text>
+
+            <Text style={styles.modalDescripcion}>
+              Hemos enviado un mensaje de confirmación a:
+            </Text>
+
+            <View style={styles.correoDestacado}>
+              <Text style={styles.correoDestacadoTexto}>
+                {correo.trim().toLowerCase()}
+              </Text>
+            </View>
+
+            <Text style={styles.modalInstrucciones}>
+              Para completar el cambio de correo electrónico:
+            </Text>
+
+            <View style={styles.pasosConfirmacion}>
+              <Text style={styles.pasoTexto}>
+                1. Abre la bandeja de entrada de tu nuevo correo.
+              </Text>
+              <Text style={styles.pasoTexto}>
+                2. Busca el mensaje de confirmación enviado por PetCare.
+              </Text>
+              <Text style={styles.pasoTexto}>
+                3. Pulsa el enlace "Confirm new email address".
+              </Text>
+            </View>
+
+            <Text style={styles.avisoCorreo}>
+              Hasta que confirmes el enlace, tu correo anterior seguirá
+              siendo el correo activo de tu cuenta.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.botonEntendido}
+              onPress={cerrarModalCorreoEnviado}
+              accessibilityRole="button"
+            >
+              <Text style={styles.textoBotonEntendido}>
+                Entendido
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -914,7 +977,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
 
-  // Modal Confirmar cambios: mismo estilo visual de PetCare.
+  // Modal de confirmación de cambios.
   modalFondo: {
     flex: 1,
     backgroundColor: 'rgba(25, 59, 56, 0.48)',
@@ -963,7 +1026,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 18,
   },
   modalBotones: {
     flexDirection: 'row',
@@ -994,6 +1057,79 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalTextoConfirmar: {
+    color: C.blanco,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
+  // Modal de correo enviado.
+  modalIconoExito: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    backgroundColor: C.suave,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 17,
+  },
+  modalIconoExitoTexto: {
+    color: C.primario,
+    fontSize: 31,
+    fontWeight: '800',
+  },
+  correoDestacado: {
+    width: '100%',
+    padding: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#B8DDD5',
+    backgroundColor: C.suave,
+    marginBottom: 18,
+  },
+  correoDestacadoTexto: {
+    color: C.oscuro,
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  modalInstrucciones: {
+    width: '100%',
+    color: C.oscuro,
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 10,
+  },
+  pasosConfirmacion: {
+    width: '100%',
+    gap: 9,
+    marginBottom: 16,
+  },
+  pasoTexto: {
+    color: C.texto,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  avisoCorreo: {
+    width: '100%',
+    color: '#8A5A16',
+    backgroundColor: '#FFF7E8',
+    borderColor: '#F3D7A4',
+    borderWidth: 1,
+    borderRadius: 11,
+    padding: 12,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  botonEntendido: {
+    width: '100%',
+    minHeight: 49,
+    borderRadius: 12,
+    backgroundColor: C.primario,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textoBotonEntendido: {
     color: C.blanco,
     fontSize: 14,
     fontWeight: '800',

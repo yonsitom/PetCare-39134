@@ -16,16 +16,16 @@ import {
   useFocusEffect,
 } from 'expo-router';
 
-import { consultarMascotaPorId } from '../../dao/mascotaDAO';
+import { consultarMascotaPorId } from '../../dao/mascotas/mascotaDAO';
 import {
   consultarAtencionesPorMascota,
-} from '../../dao/atencionesDAO';
+} from '../../dao/atencion/atencionesDAO';
+
 import {
   obtenerMensajeSinAtenciones,
   obtenerMensajeDatosIncompletos,
   obtenerMensajeErrorConsulta,
 } from '../../utils/validacionesConsultaMascota';
-import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -103,7 +103,7 @@ export default function DetalleMascotaScreen() {
           Array.isArray(historial) ? historial : []
         );
       } catch (errorHistorial) {
-        logger.error(
+        console.error(
           'Error al consultar el historial de atenciones:',
           errorHistorial
         );
@@ -114,7 +114,7 @@ export default function DetalleMascotaScreen() {
         );
       }
     } catch (e) {
-      logger.error('Error al consultar detalle de mascota:', e);
+      console.error('Error al consultar detalle de mascota:', e);
 
       setMascota(null);
       setAtenciones([]);

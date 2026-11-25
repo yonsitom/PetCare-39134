@@ -6,7 +6,7 @@ jest.mock('../../services/supabase', () => ({
 }));
 
 import { supabase } from '../../services/supabase';
-import { actualizarMascota } from '../../dao/mascotaDAO';
+import { actualizarMascota } from '../../dao/mascotas/mascotaDAO';
 
 describe('RF18 - DAO actualizarMascota', () => {
   const datosMascota = {

@@ -30,7 +30,6 @@ import { obtenerActividadesPorEstado } from '../services/actividadesServicio';
 import EncabezadoPetCare from '../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../components/layout/MenuLateralDerecho';
 import { validarDatosAtencion } from '../utils/validacionesAtencion';
-import { logger } from '../utils/logger';
 
 const C = {
   fondo: '#F4F8F7',
@@ -148,7 +147,7 @@ export default function AtencionesScreen() {
         Array.isArray(listaMascotas) ? listaMascotas : []
       );
     } catch (error) {
-      logger.error('RF09: error al cargar atenciones:', error);
+      console.error('RF09: error al cargar atenciones:', error);
       setErrorCarga(MENSAJE_ERROR_LISTADO);
     } finally {
       setCargando(false);
@@ -180,7 +179,7 @@ export default function AtencionesScreen() {
 
       setActividades(Array.from(actividadesUnicas.values()));
     } catch (error) {
-      logger.error('RF10: error al cargar actividades:', error);
+      console.error('RF10: error al cargar actividades:', error);
       setErrorActividades(MENSAJE_ERROR_ACTIVIDADES);
     }
   }, []);
@@ -403,7 +402,7 @@ export default function AtencionesScreen() {
         ]
       );
     } catch (error) {
-      logger.error('Error al registrar atención:', error);
+      console.error('Error al registrar atención:', error);
 
       Alert.alert(
         'Error',

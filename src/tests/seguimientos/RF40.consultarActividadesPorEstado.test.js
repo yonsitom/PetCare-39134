@@ -20,7 +20,7 @@
 
 import {
   crearSeguimientoService,
-} from '../../services/seguimientoServicio';
+} from '../../services/atencion/seguimientoServicio';
 
 /**
  * Repositorio falso en memoria.
@@ -178,7 +178,6 @@ describe('RF40 - Consultar actividades por estado', () => {
     // ARRANGE
     const idAtencion = atencionId;
 
-    // Reemplazar las dos actividades pendientes.
     repositorio.guardar({
       actividad_id: 1,
       atencion_id: idAtencion,
@@ -208,7 +207,7 @@ describe('RF40 - Consultar actividades por estado', () => {
     expect(resultado.actividades).toEqual([]);
     expect(resultado.total).toBe(0);
     expect(resultado.mensaje).toBe(
-      'No hay actividades pendientes'
+      'No hay actividades pendientes.'
     );
   });
 
@@ -216,7 +215,6 @@ describe('RF40 - Consultar actividades por estado', () => {
     // ARRANGE
     const idAtencion = atencionId;
 
-    // Reemplazar la actividad No realizada.
     repositorio.guardar({
       actividad_id: 6,
       atencion_id: idAtencion,
@@ -237,7 +235,7 @@ describe('RF40 - Consultar actividades por estado', () => {
     expect(resultado.actividades).toEqual([]);
     expect(resultado.total).toBe(0);
     expect(resultado.mensaje).toBe(
-      'No hay actividades no realizadas'
+      'No hay actividades no realizadas.'
     );
   });
 

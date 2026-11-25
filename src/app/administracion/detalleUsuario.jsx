@@ -21,7 +21,6 @@ import {
 } from '../../services/administracion/usuariosService';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
-import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -172,7 +171,7 @@ export default function DetalleUsuario() {
         direccion: data.direccion || '',
       });
     } catch (error) {
-      logger.error(
+      console.error(
         'Error al cargar el detalle del usuario:',
         error
       );
@@ -333,7 +332,7 @@ useEffect(() => {
         'Los datos del usuario se actualizaron correctamente.'
       );
     } catch (error) {
-      logger.error(
+      console.error(
         'Error al actualizar el usuario:',
         error
       );
@@ -417,7 +416,7 @@ useEffect(() => {
           : 'La cuenta se desactivó correctamente.'
       );
     } catch (error) {
-      logger.error(
+      console.error(
         `Error al ${
           estaActivando ? 'activar' : 'desactivar'
         } la cuenta:`,

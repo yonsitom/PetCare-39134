@@ -1,4 +1,3 @@
-
 /**
  * RF18 - Validaciones para modificar la información de una mascota.
  *
@@ -17,14 +16,12 @@ const MENSAJES = {
     'No se pudieron guardar los cambios. Intente nuevamente.',
 };
 
-/**
- * Comprueba que una fecha tenga formato YYYY-MM-DD,
- * sea una fecha real y no esté en el futuro.
- *
- * La fecha vacía se acepta porque el nacimiento es opcional.
- */
 function validarFechaNacimiento(fecha, fechaReferencia = new Date()) {
-  if (fecha === null || fecha === undefined || fecha === '') {
+  if (
+    fecha === null ||
+    fecha === undefined ||
+    String(fecha).trim() === ''
+  ) {
     return true;
   }
 
@@ -44,11 +41,17 @@ function validarFechaNacimiento(fecha, fechaReferencia = new Date()) {
 
   const fechaValidada = new Date(anio, mes - 1, dia);
 
-  // Evita aceptar fechas inexistentes como 2021-13-45.
   if (
     fechaValidada.getFullYear() !== anio ||
     fechaValidada.getMonth() !== mes - 1 ||
     fechaValidada.getDate() !== dia
+  ) {
+    return false;
+  }
+
+  if (
+    !(fechaReferencia instanceof Date) ||
+    Number.isNaN(fechaReferencia.getTime())
   ) {
     return false;
   }
@@ -65,12 +68,12 @@ function validarFechaNacimiento(fecha, fechaReferencia = new Date()) {
 /**
  * Valida los campos que exige la tabla mascotas.
  *
- * Campos obligatorios:
+ * Obligatorios:
  * - propietario_id
  * - nombre
  * - especie
  *
- * Campos opcionales:
+ * Opcionales:
  * - raza
  * - sexo
  * - fecha_nacimiento
@@ -127,11 +130,6 @@ export function validarDatosEdicionMascota(
   };
 }
 
-/**
- * Evita exponer errores técnicos de Supabase en la interfaz.
- */
-export function obtenerMensajeErrorEdicionMascota(error) {
-  // El error técnico puede registrarse en la pantalla o el servicio.
-  // El mensaje visible para el usuario debe ser genérico.
+export function obtenerMensajeErrorEdicionMascota() {
   return MENSAJES.errorActualizacion;
 }

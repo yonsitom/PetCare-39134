@@ -7,7 +7,7 @@ jest.mock('../../services/supabase', () => ({
 }));
 
 import { supabase } from '../../services/supabase';
-import { registrarAtencion } from '../../dao/atencionesDAO';
+import { registrarAtencion } from '../../dao/atencion/atencionesDAO';
 
 const obtenerMascota = jest.fn();
 const obtenerActividad = jest.fn();

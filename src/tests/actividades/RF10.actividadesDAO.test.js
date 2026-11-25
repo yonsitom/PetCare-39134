@@ -6,7 +6,7 @@ jest.mock('../../services/supabase', () => ({
 }));
 
 import { supabase } from '../../services/supabase';
-import { consultarActividadesPorEstado } from '../../dao/actividadesDAO';
+import { consultarActividadesPorEstado } from '../../dao/actividades/actividadesDAO';
 
 function crearConsulta(respuesta) {
   const consulta = {
@@ -14,6 +14,7 @@ function crearConsulta(respuesta) {
     eq: jest.fn(),
     order: jest.fn(),
     respuesta,
+
     then(resolve, reject) {
       return Promise.resolve(this.respuesta).then(resolve, reject);
     },
@@ -42,7 +43,12 @@ describe('RF10: DAO de actividades por estado', () => {
         {
           actividad_id: 2,
           estado: 'Pendiente',
-          eliminado: false,
+          eliminado: null,
+        },
+        {
+          actividad_id: 3,
+          estado: 'Pendiente',
+          eliminado: true,
         },
       ],
       error: null,
@@ -55,9 +61,22 @@ describe('RF10: DAO de actividades por estado', () => {
     const resultado = await consultarActividadesPorEstado('Pendiente');
 
     expect(resultado).toHaveLength(2);
+
+    expect(resultado.map((actividad) => actividad.actividad_id))
+      .toEqual([1, 2]);
+
     expect(supabase.from).toHaveBeenCalledWith('actividades');
-    expect(consulta.eq).toHaveBeenCalledWith('eliminado', false);
-    expect(consulta.eq).toHaveBeenCalledWith('estado', 'Pendiente');
+
+    expect(consulta.eq).toHaveBeenCalledWith(
+      'estado',
+      'Pendiente'
+    );
+
+    expect(consulta.eq).not.toHaveBeenCalledWith(
+      'eliminado',
+      false
+    );
+
     expect(consulta.order).toHaveBeenCalledWith(
       'fecha_registro',
       { ascending: false }
@@ -73,36 +92,50 @@ describe('RF10: DAO de actividades por estado', () => {
     const resultado = await consultarActividadesPorEstado('Completada');
 
     expect(resultado).toEqual([]);
-    expect(consulta.eq).toHaveBeenCalledWith('eliminado', false);
-    expect(consulta.eq).toHaveBeenCalledWith('estado', 'Completada');
+
+    expect(consulta.eq).toHaveBeenCalledWith(
+      'estado',
+      'Completada'
+    );
   });
 
   test('CP03: permite consultar todos los estados cuando no se especifica filtro', async () => {
-    await consultarActividadesPorEstado();
+    const resultado = await consultarActividadesPorEstado();
 
-    expect(consulta.eq).toHaveBeenCalledWith('eliminado', false);
+    expect(resultado).toHaveLength(2);
+
     expect(consulta.eq).not.toHaveBeenCalledWith(
       'estado',
       expect.anything()
     );
+
+    expect(resultado.every(
+      (actividad) => actividad.eliminado !== true
+    )).toBe(true);
   });
 
   test('CP04: rechaza un estado no permitido', async () => {
     await expect(
       consultarActividadesPorEstado('En proceso')
-    ).rejects.toThrow('El estado indicado no es válido.');
+    ).rejects.toThrow(
+      'El estado indicado no es válido.'
+    );
 
     expect(supabase.from).not.toHaveBeenCalled();
   });
 
-  test('CP05: propaga el error cuando Supabase falla', async () => {
+  test('CP05: informa un error cuando Supabase falla', async () => {
     consulta.respuesta = {
       data: null,
-      error: { message: 'Error simulado de Supabase' },
+      error: {
+        message: 'Error simulado de Supabase',
+      },
     };
 
     await expect(
       consultarActividadesPorEstado('Pendiente')
-    ).rejects.toThrow();
+    ).rejects.toThrow(
+      'No se pudieron consultar las actividades. Intente nuevamente.'
+    );
   });
 });

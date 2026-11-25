@@ -2,50 +2,31 @@
 /**
  * ============================================================
  * PETCARE - SERVICIO DE DIETAS
- * RF54: Registrar la dieta indicada a una mascota
- * ============================================================
+ * RF54: Registrar la dieta indicada a una mascota.
  *
- * Archivo: src/services/dieta/dietaServicio.js
- *
- * Responsabilidades:
- * - Consultar una dieta por receta.
- * - Consultar recetas disponibles para registrar una dieta.
- * - Validar los datos antes de guardar.
- * - Validar que se haya seleccionado un tipo de dieta.
- * - Verificar que la dieta tenga alimentos asociados.
- * - Controlar errores de carga y registro.
- *
- * Arquitectura:
- * La persistencia se delega al DAO.
+ * Responsabilidad:
+ * Validar y normalizar la información antes de enviarla al DAO.
  * ============================================================
  */
 
 import {
   consultarDietaPorRecetaDAO,
   consultarRecetasDisponiblesParaDietaDAO,
+  consultarTiposDietaDAO,
   registrarDietaDAO,
-} from '../../dao/dieta/dietaDAO';
-import { logger } from '../../utils/logger';
-
-// ============================================================
-// MENSAJES DEL RF54
-// ============================================================
+} from '../../dao/dietaCita/dietaDAO';
 
 const MENSAJE_DIETA_NO_SELECCIONADA =
   'Seleccione un tipo de dieta.';
 
-const MENSAJE_DIETA_SIN_ALIMENTOS =
-  'La dieta seleccionada no tiene alimentos registrados.';
+const MENSAJE_DIETA_SIN_DATOS =
+  'Completa al menos uno de los campos de la dieta seleccionada.';
 
 const MENSAJE_ERROR_CARGAR =
   'No fue posible cargar las dietas. Intente nuevamente.';
 
 const MENSAJE_ERROR_REGISTRAR =
-  'No fue posible registrar la actividad. Intente nuevamente.';
-
-// ============================================================
-// VALIDAR IDENTIFICADORES
-// ============================================================
+  'No fue posible registrar la dieta. Intente nuevamente.';
 
 function validarIdentificador(valor, mensaje) {
   if (
@@ -66,9 +47,38 @@ function validarIdentificador(valor, mensaje) {
   return numero;
 }
 
-// ============================================================
-// RF54 - CONSULTAR DIETA POR RECETA
-// ============================================================
+function normalizarDetalle(detalle) {
+  return Object.fromEntries(
+    Object.entries(detalle).map(([campo, valor]) => [
+      campo,
+      valor === null || valor === undefined
+        ? ''
+        : String(valor).trim(),
+    ])
+  );
+}
+
+function validarDetalleDieta(detalle) {
+  if (
+    !detalle ||
+    typeof detalle !== 'object' ||
+    Array.isArray(detalle)
+  ) {
+    throw new Error(MENSAJE_DIETA_SIN_DATOS);
+  }
+
+  const tieneDatos = Object.values(detalle).some((valor) => {
+    if (valor === null || valor === undefined) {
+      return false;
+    }
+
+    return String(valor).trim().length > 0;
+  });
+
+  if (!tieneDatos) {
+    throw new Error(MENSAJE_DIETA_SIN_DATOS);
+  }
+}
 
 export async function obtenerDietaServicio(recetaId) {
   const id = validarIdentificador(
@@ -76,13 +86,23 @@ export async function obtenerDietaServicio(recetaId) {
     'El identificador de la receta no es válido.'
   );
 
-  return consultarDietaPorRecetaDAO(id);
+  try {
+    return await consultarDietaPorRecetaDAO(id);
+  } catch (error) {
+    console.error('Error consultando dieta:', error);
+    throw new Error(MENSAJE_ERROR_CARGAR);
+  }
 }
 
-// ============================================================
-// RF54 - CONSULTAR RECETAS DISPONIBLES PARA DIETA
-// CP04 - ERROR AL CARGAR CATÁLOGO
-// ============================================================
+export async function obtenerTiposDietaServicio() {
+  try {
+    const tipos = await consultarTiposDietaDAO();
+    return Array.isArray(tipos) ? tipos : [];
+  } catch (error) {
+    console.error('Error cargando tipos de dieta:', error);
+    throw new Error(MENSAJE_ERROR_CARGAR);
+  }
+}
 
 export async function obtenerRecetasDisponiblesParaDietaServicio(
   atencionId
@@ -98,107 +118,45 @@ export async function obtenerRecetasDisponiblesParaDietaServicio(
 
     return Array.isArray(resultado) ? resultado : [];
   } catch (error) {
-    logger.error(
-      'RF54: no fue posible cargar las dietas:',
-      error
-    );
-
+    console.error('Error cargando recetas disponibles:', error);
     throw new Error(MENSAJE_ERROR_CARGAR);
   }
 }
 
-// ============================================================
-// VALIDAR QUE LA DIETA TENGA ALIMENTOS
-// ============================================================
-
-function validarAlimentos(datos) {
-  /*
-   * El DAO actual guarda las opciones de proteína y vegetales.
-   * No se consideran carbohidratos u "otro" como persistidos
-   * porque el DAO compartido todavía no los guarda.
-   */
-
-  const proteina = String(
-    datos.opciones_proteina ?? ''
-  ).trim();
-
-  const vegetales = String(
-    datos.opciones_vegetales ?? ''
-  ).trim();
-
-  const tieneAlimentos = Boolean(
-    proteina || vegetales
-  );
-
-  if (!tieneAlimentos) {
-    throw new Error(MENSAJE_DIETA_SIN_ALIMENTOS);
-  }
-}
-
-// ============================================================
-// RF54 - REGISTRAR DIETA
-// CP01 - REGISTRO EXITOSO
-// CP02 - DIETA NO SELECCIONADA
-// CP03 - DIETA SIN ALIMENTOS
-// CP05 - ERROR AL REGISTRAR
-// ============================================================
-
 export async function registrarDietaServicio(datos) {
-  // Validar que se hayan recibido datos.
-
   if (!datos || typeof datos !== 'object' || Array.isArray(datos)) {
-    throw new Error(
-      'Debes proporcionar los datos de la dieta.'
-    );
+    throw new Error('Debes proporcionar los datos de la dieta.');
   }
-
-  // Validar que exista una receta válida.
 
   const recetaId = validarIdentificador(
     datos.receta_id,
     'Debes seleccionar una receta válida.'
   );
 
-  // Validar que se haya seleccionado un tipo de dieta.
-
-  const tipoDieta = String(
-    datos.tipo_dieta ?? ''
-  ).trim();
+  const tipoDieta = String(datos.tipo_dieta ?? '').trim();
 
   if (!tipoDieta) {
     throw new Error(MENSAJE_DIETA_NO_SELECCIONADA);
   }
 
-  // Validar que existan alimentos asociados.
+  const detalle = datos.detalle_dieta || {};
 
-  validarAlimentos(datos);
-
-  // Preparar los datos que reconoce el DAO actual.
+  validarDetalleDieta(detalle);
 
   const datosNormalizados = {
     receta_id: recetaId,
     tipo_dieta: tipoDieta,
-    opciones_proteina: String(
-      datos.opciones_proteina ?? ''
-    ).trim(),
-    opciones_vegetales: String(
-      datos.opciones_vegetales ?? ''
-    ).trim(),
-    restriccion_nutricional: String(
-      datos.restriccion_nutricional ?? ''
-    ).trim(),
+    detalle_dieta: normalizarDetalle(detalle),
   };
-
-  // Guardar la dieta y controlar los errores técnicos.
 
   try {
     return await registrarDietaDAO(datosNormalizados);
   } catch (error) {
-    logger.error(
-      'RF54: no fue posible registrar la dieta:',
-      error
+    console.error('RF54: error registrando dieta:', error);
+    throw new Error(
+      error?.message?.includes('ya tiene una dieta')
+        ? error.message
+        : MENSAJE_ERROR_REGISTRAR
     );
-
-    throw new Error(MENSAJE_ERROR_REGISTRAR);
   }
 }

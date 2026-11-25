@@ -1,13 +1,14 @@
 
-import { finalizarAtencionSiCorresponde } from '../../dao/actividadesDAO';
-
-import { supabase } from '../../services/supabase';
-
 jest.mock('../../services/supabase', () => ({
   supabase: {
     from: jest.fn(),
   },
 }));
+
+import { supabase } from '../../services/supabase';
+import {
+  finalizarAtencionSiCorresponde,
+} from '../../dao/actividades/actividadesDAO';
 
 describe('RF27 - Finalizar atención veterinaria mediante confirmación', () => {
   let atencion;
@@ -67,9 +68,11 @@ describe('RF27 - Finalizar atención veterinaria mediante confirmación', () => 
       }
 
       if (tabla === 'actividades') {
+        // Mock encadenable: select -> eq -> order.
         const consulta = {
           select: jest.fn(() => consulta),
           eq: jest.fn(() => consulta),
+          order: jest.fn(() => consulta),
           then: (resolve, reject) =>
             Promise.resolve({
               data: actividades,
@@ -127,9 +130,9 @@ describe('RF27 - Finalizar atención veterinaria mediante confirmación', () => 
 
     const resultado = await finalizarAtencionSiCorresponde(1);
 
-    expect(resultado.finalizada).toBe(true);
     expect(resultado.modificada).toBe(false);
     expect(atencion.estado).toBe('Finalizada');
+    expect(atencion.fecha_fin).toBe('2026-10-27T10:00:00.000Z');
     expect(actualizacion).toBeNull();
   });
 });

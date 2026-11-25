@@ -2,11 +2,12 @@
 /**
  * RF48 - Gestionar estado del propietario.
  *
- * Casos de prueba definidos:
- * CP01: Éxito - activación o desactivación del propietario.
+ * Casos de prueba:
+ * CP01: Éxito - activar o desactivar al propietario.
  * CP02: E1 - Propietario no encontrado.
  * CP03: E2 - Búsqueda sin datos.
  * CP04: E3 - Error al actualizar el estado.
+ * CP05: E4 - Motivo obligatorio para desactivar.
  *
  * Metodología TDD: AAA
  * Arrange: preparar los datos y las dependencias.
@@ -17,7 +18,7 @@
 import {
   crearPropietarioEstadoServicio,
   MENSAJES_ESTADO_PROPIETARIO,
-} from '../../services/propietarioEstadoServicio';
+} from '../../services/propietario/propietarioEstadoServicio';
 
 describe('RF48 - Gestionar estado del propietario', () => {
   let propietarioDAO;
@@ -31,7 +32,6 @@ describe('RF48 - Gestionar estado del propietario', () => {
   };
 
   beforeEach(() => {
-    // Arrange: simular el acceso a los datos.
     propietarioDAO = {
       buscarPorCriterio: jest.fn(),
       actualizarEstado: jest.fn(),
@@ -56,6 +56,8 @@ describe('RF48 - Gestionar estado del propietario', () => {
       .mockResolvedValueOnce(propietarioActivado)
       .mockResolvedValueOnce(propietarioDesactivado);
 
+    const motivo = 'Cambio de condición del propietario';
+
     // Act
     const resultadoActivar = await servicio.gestionarEstado(
       propietario.propietario_id,
@@ -64,7 +66,8 @@ describe('RF48 - Gestionar estado del propietario', () => {
 
     const resultadoDesactivar = await servicio.gestionarEstado(
       propietario.propietario_id,
-      'Inactivo'
+      'Inactivo',
+      motivo
     );
 
     // Assert
@@ -77,13 +80,15 @@ describe('RF48 - Gestionar estado del propietario', () => {
     expect(propietarioDAO.actualizarEstado).toHaveBeenNthCalledWith(
       1,
       propietario.propietario_id,
-      'Activo'
+      'Activo',
+      ''
     );
 
     expect(propietarioDAO.actualizarEstado).toHaveBeenNthCalledWith(
       2,
       propietario.propietario_id,
-      'Inactivo'
+      'Inactivo',
+      motivo
     );
   });
 
@@ -104,6 +109,7 @@ describe('RF48 - Gestionar estado del propietario', () => {
     expect(propietarioDAO.buscarPorCriterio).toHaveBeenCalledWith(
       '99999999'
     );
+
     expect(propietarioDAO.actualizarEstado).not.toHaveBeenCalled();
   });
 
@@ -120,17 +126,18 @@ describe('RF48 - Gestionar estado del propietario', () => {
       MENSAJES_ESTADO_PROPIETARIO.BUSQUEDA_VACIA
     );
 
-    // No debe consultar ni actualizar la base de datos.
     expect(propietarioDAO.buscarPorCriterio).not.toHaveBeenCalled();
     expect(propietarioDAO.actualizarEstado).not.toHaveBeenCalled();
   });
 
-  test('CP04: E3 - debe informar el error y conservar el estado anterior si falla la actualización', async () => {
+  test('CP04: E3 - debe informar el error si falla la actualización', async () => {
     // Arrange
     const propietarioAnterior = {
       ...propietario,
       estado: 'Activo',
     };
+
+    const motivo = 'Motivo de prueba';
 
     propietarioDAO.actualizarEstado.mockRejectedValue(
       new Error('Servicio de actualización no disponible')
@@ -139,7 +146,8 @@ describe('RF48 - Gestionar estado del propietario', () => {
     // Act
     const resultado = await servicio.gestionarEstado(
       propietarioAnterior.propietario_id,
-      'Inactivo'
+      'Inactivo',
+      motivo
     );
 
     // Assert
@@ -148,12 +156,54 @@ describe('RF48 - Gestionar estado del propietario', () => {
       MENSAJES_ESTADO_PROPIETARIO.ERROR_ACTUALIZAR
     );
 
-    // El objeto que representa el estado previo no debe cambiar.
     expect(propietarioAnterior.estado).toBe('Activo');
 
     expect(propietarioDAO.actualizarEstado).toHaveBeenCalledWith(
       propietarioAnterior.propietario_id,
-      'Inactivo'
+      'Inactivo',
+      motivo
     );
+  });
+
+  test('CP05: debe exigir un motivo para desactivar al propietario', async () => {
+    // Arrange
+    const motivo = '';
+
+    // Act
+    const resultado = await servicio.gestionarEstado(
+      propietario.propietario_id,
+      'Inactivo',
+      motivo
+    );
+
+    // Assert
+    expect(resultado.exito).toBe(false);
+
+    expect(resultado.mensaje).toBe(
+      MENSAJES_ESTADO_PROPIETARIO.MOTIVO_REQUERIDO
+    );
+
+    expect(propietarioDAO.actualizarEstado).not.toHaveBeenCalled();
+  });
+
+  test('CP06: debe rechazar un motivo compuesto únicamente por espacios', async () => {
+    // Arrange
+    const motivo = '     ';
+
+    // Act
+    const resultado = await servicio.gestionarEstado(
+      propietario.propietario_id,
+      'Inactivo',
+      motivo
+    );
+
+    // Assert
+    expect(resultado.exito).toBe(false);
+
+    expect(resultado.mensaje).toBe(
+      MENSAJES_ESTADO_PROPIETARIO.MOTIVO_REQUERIDO
+    );
+
+    expect(propietarioDAO.actualizarEstado).not.toHaveBeenCalled();
   });
 });

@@ -19,7 +19,6 @@ import {
 } from '../../services/dieta/dietaServicio';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
-import { logger } from '../../utils/logger';
 
 const C = {
   fondo: '#F4F8F7',
@@ -80,7 +79,7 @@ export default function RegistrarDietaScreen() {
 
         if (activo) setRecetas(lista);
       } catch (error) {
-        logger.error('Error cargando recetas para dieta:', error);
+        console.error('Error cargando recetas para dieta:', error);
         Alert.alert('Error', error.message || 'No se pudieron cargar las recetas.');
       } finally {
         if (activo) setCargando(false);
@@ -125,9 +124,8 @@ export default function RegistrarDietaScreen() {
         [{
           text: 'Aceptar',
           onPress: () => router.replace({
-            pathname: '/dieta/detalle',
+            pathname: '/recetas/detalle',
             params: {
-              dieta_id: String(dieta.dieta_id),
               receta_id: recetaId,
               atencion_id: atencionId,
             },
@@ -136,7 +134,7 @@ export default function RegistrarDietaScreen() {
         { cancelable: false }
       );
     } catch (error) {
-      logger.error('Error registrando dieta:', error);
+      console.error('Error registrando dieta:', error);
       Alert.alert('No se pudo registrar', error.message || 'Ocurrió un error.');
     } finally {
       setGuardando(false);
@@ -148,7 +146,7 @@ export default function RegistrarDietaScreen() {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       setMenuAbierto(false);
-      router.replace('/login');
+      router.replace('/');
     } catch {
       Alert.alert('Error', 'No se pudo cerrar la sesión.');
     }

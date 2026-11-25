@@ -1,10 +1,10 @@
 
-jest.mock('../../dao/actividadesDAO', () => ({
+jest.mock('../../dao/actividades/actividadesDAO', () => ({
   consultarActividadesPorEstado: jest.fn(),
 }));
 
-import { consultarActividadesPorEstado } from '../../dao/actividadesDAO';
-import { obtenerActividadesPorEstado } from '../../services/actividadesServicio';
+import { consultarActividadesPorEstado } from '../../dao/actividades/actividadesDAO';
+import { obtenerActividadesPorEstado } from '../../services/atencion/actividadesServicio';
 
 describe('RF10: Visualizar actividades por estado', () => {
   beforeEach(() => {

@@ -1,12 +1,12 @@
 
-import { supabase } from '../../services/supabase';
-import { finalizarAtencionSiCorresponde } from '../../dao/actividadesDAO';
-
 jest.mock('../../services/supabase', () => ({
   supabase: {
     from: jest.fn(),
   },
 }));
+
+import { supabase } from '../../services/supabase';
+import { finalizarAtencionSiCorresponde } from '../../dao/actividades/actividadesDAO';
 
 describe('RF28 - Registrar fecha y hora de finalización', () => {
   let mockAtencion;
@@ -25,9 +25,21 @@ describe('RF28 - Registrar fecha y hora de finalización', () => {
     };
 
     mockActividades = [
-      { actividad_id: 1, estado: 'Completada', eliminado: false },
-      { actividad_id: 2, estado: 'Completada', eliminado: false },
-      { actividad_id: 3, estado: 'No realizada', eliminado: false },
+      {
+        actividad_id: 1,
+        estado: 'Completada',
+        eliminado: false,
+      },
+      {
+        actividad_id: 2,
+        estado: 'Completada',
+        eliminado: false,
+      },
+      {
+        actividad_id: 3,
+        estado: 'No realizada',
+        eliminado: false,
+      },
     ];
 
     mockResultadoUpdate = {
@@ -56,6 +68,8 @@ describe('RF28 - Registrar fecha y hora de finalización', () => {
 
         eq: jest.fn(() => consulta),
 
+        order: jest.fn(() => consulta),
+
         maybeSingle: jest.fn(async () => {
           if (tabla === 'atenciones' && modo === 'select') {
             return {
@@ -75,7 +89,10 @@ describe('RF28 - Registrar fecha y hora de finalización', () => {
             return mockResultadoUpdate;
           }
 
-          return { data: null, error: null };
+          return {
+            data: null,
+            error: null,
+          };
         }),
 
         then: (resolve, reject) => {
@@ -106,10 +123,16 @@ describe('RF28 - Registrar fecha y hora de finalización', () => {
     const datosActualizacion = mockUpdate.mock.calls[0][0];
 
     expect(datosActualizacion.estado).toBe('Finalizada');
-    expect(typeof datosActualizacion.fecha_fin).toBe('string');
-    expect(Number.isNaN(Date.parse(datosActualizacion.fecha_fin))).toBe(false);
 
-    const fechaRegistrada = Date.parse(datosActualizacion.fecha_fin);
+    expect(typeof datosActualizacion.fecha_fin).toBe('string');
+
+    expect(
+      Number.isNaN(Date.parse(datosActualizacion.fecha_fin))
+    ).toBe(false);
+
+    const fechaRegistrada = Date.parse(
+      datosActualizacion.fecha_fin
+    );
 
     expect(fechaRegistrada).toBeGreaterThanOrEqual(antes);
     expect(fechaRegistrada).toBeLessThanOrEqual(despues);
@@ -117,8 +140,16 @@ describe('RF28 - Registrar fecha y hora de finalización', () => {
 
   test('CP02 - No finaliza si existen actividades pendientes', async () => {
     mockActividades = [
-      { actividad_id: 1, estado: 'Completada', eliminado: false },
-      { actividad_id: 2, estado: 'Pendiente', eliminado: false },
+      {
+        actividad_id: 1,
+        estado: 'Completada',
+        eliminado: false,
+      },
+      {
+        actividad_id: 2,
+        estado: 'Pendiente',
+        eliminado: false,
+      },
     ];
 
     const resultado = await finalizarAtencionSiCorresponde(1);

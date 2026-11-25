@@ -1,47 +1,30 @@
 
 /**
  * ============================================================
- * PETCARE - RF55: REGISTRAR HALLAZGOS POR ÓRGANO
+ * PETCARE - RF55: REGISTRAR HALLAZGOS DE ECOGRAFÍA
  * ============================================================
  *
  * Archivo:
  * RF55.registrarHallazgosEcografia.test.js
  *
- * Arquitectura: Servicio + DAO
- * Metodología: TDD
- * Actores: Administrador y Asistente
+ * Arquitectura:
+ * Servicio -> DAO -> Supabase.
  *
- * CP01: Registro exitoso de hallazgos por órgano.
+ * Metodología: TDD.
+ * Actores: Administrador y Asistente.
+ *
+ * Estructura del detalle:
+ * - zona: zona anatómica evaluada.
+ * - organos: identificadores y nombres de órganos.
+ * - hallazgos: descripción general de los hallazgos.
+ * - mediciones_especificas: mediciones independientes.
+ *
+ * CP01: Registro exitoso.
  * CP02: Sin órganos.
  * CP03: Hallazgos vacíos.
  * CP04: Órgano repetido.
  * CP05: Medición inválida.
- * CP06: Error al registrar.
- *
- * Contrato de datos propuesto para el detalle:
- *
- * detalle: {
- *   area_evaluar: '',
- *   organos: [
- *     {
- *       organo_id: 1,
- *       nombre_organo: '',
- *       hallazgos: '',
- *       mediciones_especificas: [
- *         {
- *           nombre_medicion: '',
- *           valor: 0,
- *           unidad: ''
- *         }
- *       ],
- *       conclusion_sugerida: ''
- *     }
- *   ]
- * }
- *
- * Las mediciones se representan mediante valores numéricos
- * y unidades. Este formato debe mantenerse alineado con
- * la implementación definitiva del módulo de ecografía.
+ * CP06: Error técnico al registrar.
  * ============================================================
  */
 
@@ -51,23 +34,26 @@
 
 import {
   registrarActividadServicio,
-} from '../../services/actividadesServicio';
+} from '../../services/atencion/actividadesServicio';
 
 // ============================================================
 // DAO QUE SE VA A SIMULAR
 // ============================================================
 
-import * as actividadesDAO from '../../dao/actividadesDAO';
+import * as actividadesDAO from '../../dao/actividades/actividadesDAO';
 
 // ============================================================
 // MOCK DEL DAO
 // ============================================================
 
-jest.mock('../../dao/actividadesDAO', () => ({
+jest.mock('../../dao/actividades/actividadesDAO', () => ({
   consultarActividadesPorEstado: jest.fn(),
   consultarActividadesPorAtencion: jest.fn(),
   actualizarEstadoActividad: jest.fn(),
   registrarActividad: jest.fn(),
+  consultarTiposActividad: jest.fn(),
+  consultarCatalogoMedicamentos: jest.fn(),
+  registrarVacunacionActividad: jest.fn(),
 }));
 
 // ============================================================
@@ -77,8 +63,6 @@ jest.mock('../../dao/actividadesDAO', () => ({
 const crearDatosEcografia = () => ({
   atencion_id: 15,
 
-  // Identificador de prueba del tipo Ecografía.
-  // No representa necesariamente el ID de producción.
   tipo_id: 4,
 
   fecha_prevista: '2026-10-30',
@@ -86,26 +70,23 @@ const crearDatosEcografia = () => ({
   observaciones: 'Ecografía abdominal',
 
   detalle: {
-    area_evaluar: 'Abdominal',
+    zona: 'Abdomen',
 
     organos: [
       {
         organo_id: 1,
         nombre_organo: 'Hígado',
+      },
+    ],
 
-        hallazgos:
-          'Tamaño y ecogenicidad dentro de los parámetros esperados.',
+    hallazgos:
+      'Tamaño y ecogenicidad dentro de los parámetros esperados.',
 
-        mediciones_especificas: [
-          {
-            nombre_medicion: 'Longitud',
-            valor: 12.5,
-            unidad: 'cm',
-          },
-        ],
-
-        conclusion_sugerida:
-          'Hígado sin alteraciones ecográficas evidentes.',
+    mediciones_especificas: [
+      {
+        nombre_medicion: 'Longitud',
+        valor: 12.5,
+        unidad: 'cm',
       },
     ],
   },
@@ -120,26 +101,23 @@ const actividadRegistrada = {
   observaciones: 'Ecografía abdominal',
 
   detalle: {
-    area_evaluar: 'Abdominal',
+    zona: 'Abdomen',
 
     organos: [
       {
         organo_id: 1,
         nombre_organo: 'Hígado',
+      },
+    ],
 
-        hallazgos:
-          'Tamaño y ecogenicidad dentro de los parámetros esperados.',
+    hallazgos:
+      'Tamaño y ecogenicidad dentro de los parámetros esperados.',
 
-        mediciones_especificas: [
-          {
-            nombre_medicion: 'Longitud',
-            valor: 12.5,
-            unidad: 'cm',
-          },
-        ],
-
-        conclusion_sugerida:
-          'Hígado sin alteraciones ecográficas evidentes.',
+    mediciones_especificas: [
+      {
+        nombre_medicion: 'Longitud',
+        valor: 12.5,
+        unidad: 'cm',
       },
     ],
   },
@@ -149,171 +127,221 @@ const actividadRegistrada = {
 // CONFIGURACIÓN GENERAL
 // ============================================================
 
-describe('RF55 - Registrar hallazgos de ecografía por órgano', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+describe(
+  'RF55 - Registrar hallazgos de ecografía por órgano',
+  () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
 
-    actividadesDAO.registrarActividad.mockResolvedValue(
-      actividadRegistrada
-    );
-  });
-
-  // ==========================================================
-  // CP01 - ÉXITO: HALLAZGOS POR ÓRGANO
-  // ==========================================================
-
-  test('CP01 - Debe registrar los hallazgos por órgano con estado Pendiente', async () => {
-    const datosEcografia = crearDatosEcografia();
-
-    const resultado = await registrarActividadServicio(
-      datosEcografia
-    );
-
-    expect(actividadesDAO.registrarActividad)
-      .toHaveBeenCalledTimes(1);
-
-    expect(actividadesDAO.registrarActividad)
-      .toHaveBeenCalledWith(
-        expect.objectContaining({
-          atencion_id: 15,
+      // El ID 4 corresponde a ECOGRAFIA.
+      actividadesDAO.consultarTiposActividad.mockResolvedValue([
+        {
           tipo_id: 4,
-          estado: 'Pendiente',
-          fecha_prevista: '2026-10-30',
+          codigo: 'ECOGRAFIA',
+          nombre: 'Ecografía',
+        },
+      ]);
 
-          detalle: expect.objectContaining({
-            area_evaluar: 'Abdominal',
-
-            organos: expect.arrayContaining([
-              expect.objectContaining({
-                organo_id: 1,
-                nombre_organo: 'Hígado',
-
-                hallazgos: expect.any(String),
-
-                mediciones_especificas:
-                  expect.arrayContaining([
-                    expect.objectContaining({
-                      nombre_medicion: 'Longitud',
-                      valor: 12.5,
-                      unidad: 'cm',
-                    }),
-                  ]),
-
-                conclusion_sugerida: expect.any(String),
-              }),
-            ]),
-          }),
-        })
+      actividadesDAO.registrarActividad.mockResolvedValue(
+        actividadRegistrada
       );
+    });
 
-    expect(resultado).toEqual(actividadRegistrada);
+    // ========================================================
+    // CP01 - REGISTRO EXITOSO
+    // ========================================================
 
-    expect(resultado.estado).toBe('Pendiente');
+    test(
+      'CP01 - Debe registrar los hallazgos con estado Pendiente',
+      async () => {
+        // ARRANGE
+        const datosEcografia = crearDatosEcografia();
 
-    expect(resultado.detalle.organos).toHaveLength(1);
-  });
+        // ACT
+        const resultado = await registrarActividadServicio(
+          datosEcografia
+        );
 
-  // ==========================================================
-  // CP02 - E1: SIN ÓRGANOS
-  // ==========================================================
+        // ASSERT
+        expect(
+          actividadesDAO.consultarTiposActividad
+        ).toHaveBeenCalledTimes(1);
 
-  test('CP02 - Debe rechazar el registro cuando no se agrega ningún órgano', async () => {
+        expect(
+          actividadesDAO.registrarActividad
+        ).toHaveBeenCalledTimes(1);
+
+        expect(
+          actividadesDAO.registrarActividad
+        ).toHaveBeenCalledWith(
+          expect.objectContaining({
+            atencion_id: 15,
+            tipo_id: 4,
+            tipo_codigo: 'ECOGRAFIA',
+            tipo: 'Ecografía',
+            estado: 'Pendiente',
+            fecha_prevista: '2026-10-30',
+
+            detalle: expect.objectContaining({
+              zona: 'Abdomen',
+
+              organos: expect.arrayContaining([
+                expect.objectContaining({
+                  organo_id: 1,
+                  nombre_organo: 'Hígado',
+                }),
+              ]),
+
+              hallazgos: expect.any(String),
+
+              mediciones_especificas:
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    nombre_medicion: 'Longitud',
+                    valor: 12.5,
+                    unidad: 'cm',
+                  }),
+                ]),
+            }),
+          })
+        );
+
+        expect(resultado).toEqual(actividadRegistrada);
+        expect(resultado.estado).toBe('Pendiente');
+        expect(resultado.detalle.organos).toHaveLength(1);
+      }
+    );
+
+    // ========================================================
+    // CP02 - SIN ÓRGANOS
+    // ========================================================
+
+    test(
+  'CP02 - Debe rechazar el registro cuando no se agrega ningún órgano',
+  async () => {
+    // ARRANGE
     const datosEcografia = crearDatosEcografia();
 
     datosEcografia.detalle.organos = [];
 
+    // ACT / ASSERT
     await expect(
       registrarActividadServicio(datosEcografia)
     ).rejects.toThrow(
       'Agregue al menos un órgano evaluado.'
     );
 
-    expect(actividadesDAO.registrarActividad)
-      .not.toHaveBeenCalled();
-  });
+    expect(
+      actividadesDAO.registrarActividad
+    ).not.toHaveBeenCalled();
+  }
+);
 
-  // ==========================================================
-  // CP03 - E2: HALLAZGOS VACÍOS
-  // ==========================================================
+    // ========================================================
+    // CP03 - HALLAZGOS VACÍOS
+    // ========================================================
 
-  test('CP03 - Debe rechazar un órgano sin hallazgos', async () => {
+    test(
+  'CP03 - Debe rechazar una ecografía sin hallazgos',
+  async () => {
+    // ARRANGE
     const datosEcografia = crearDatosEcografia();
 
-    datosEcografia.detalle.organos[0].hallazgos = '   ';
+    datosEcografia.detalle.hallazgos = '   ';
 
+    // ACT / ASSERT
     await expect(
       registrarActividadServicio(datosEcografia)
     ).rejects.toThrow(
-      'Ingrese los hallazgos del órgano seleccionado.'
+      'Ingrese los hallazgos de la ecografía.'
     );
 
-    expect(actividadesDAO.registrarActividad)
-      .not.toHaveBeenCalled();
-  });
+    expect(
+      actividadesDAO.registrarActividad
+    ).not.toHaveBeenCalled();
+  }
+);
+    // ========================================================
+    // CP04 - ÓRGANO REPETIDO
+    // ========================================================
 
-  // ==========================================================
-  // CP04 - E3: ÓRGANO REPETIDO
-  // ==========================================================
+    test(
+      'CP04 - Debe impedir agregar dos veces el mismo órgano',
+      async () => {
+        // ARRANGE
+        const datosEcografia = crearDatosEcografia();
 
-  test('CP04 - Debe impedir agregar dos veces el mismo órgano', async () => {
-    const datosEcografia = crearDatosEcografia();
+        datosEcografia.detalle.organos.push({
+          organo_id: 1,
+          nombre_organo: 'Hígado',
+        });
 
-    const segundoOrgano = {
-      ...datosEcografia.detalle.organos[0],
+        // ACT / ASSERT
+        await expect(
+          registrarActividadServicio(datosEcografia)
+        ).rejects.toThrow(
+          'Este órgano ya fue agregado a la ecografía.'
+        );
 
-      hallazgos: 'Segundo registro del mismo órgano.',
-    };
-
-    datosEcografia.detalle.organos.push(segundoOrgano);
-
-    await expect(
-      registrarActividadServicio(datosEcografia)
-    ).rejects.toThrow(
-      'Este órgano ya fue agregado a la ecografía.'
+        expect(
+          actividadesDAO.registrarActividad
+        ).not.toHaveBeenCalled();
+      }
     );
 
-    expect(actividadesDAO.registrarActividad)
-      .not.toHaveBeenCalled();
-  });
+    // ========================================================
+    // CP05 - MEDICIÓN INVÁLIDA
+    // ========================================================
 
-  // ==========================================================
-  // CP05 - E4: MEDICIÓN INVÁLIDA
-  // ==========================================================
+    test(
+      'CP05 - Debe rechazar mediciones con formato incorrecto',
+      async () => {
+        // ARRANGE
+        const datosEcografia = crearDatosEcografia();
 
-  test('CP05 - Debe rechazar mediciones con formato incorrecto', async () => {
-    const datosEcografia = crearDatosEcografia();
+        datosEcografia.detalle
+          .mediciones_especificas[0].valor = 'no-numérico';
 
-    datosEcografia.detalle.organos[0]
-      .mediciones_especificas[0].valor = 'no-numérico';
+        // ACT / ASSERT
+        await expect(
+          registrarActividadServicio(datosEcografia)
+        ).rejects.toThrow(
+          'Ingrese mediciones con un formato válido.'
+        );
 
-    await expect(
-      registrarActividadServicio(datosEcografia)
-    ).rejects.toThrow(
-      'Ingrese mediciones con un formato válido.'
+        expect(
+          actividadesDAO.registrarActividad
+        ).not.toHaveBeenCalled();
+      }
     );
 
-    expect(actividadesDAO.registrarActividad)
-      .not.toHaveBeenCalled();
-  });
+    // ========================================================
+    // CP06 - ERROR TÉCNICO AL REGISTRAR
+    // ========================================================
 
-  // ==========================================================
-  // CP06 - E5: ERROR AL REGISTRAR
-  // ==========================================================
+    test(
+      'CP06 - Debe controlar el error técnico al registrar la ecografía',
+      async () => {
+        // ARRANGE
+        const datosEcografia = crearDatosEcografia();
 
-  test('CP06 - Debe controlar el error técnico al registrar la ecografía', async () => {
-    actividadesDAO.registrarActividad.mockRejectedValue(
-      new Error('Error de conexión con Supabase')
+        actividadesDAO.registrarActividad.mockRejectedValue(
+          new Error('Error de conexión con Supabase')
+        );
+
+        // ACT / ASSERT
+        await expect(
+          registrarActividadServicio(datosEcografia)
+        ).rejects.toThrow(
+          'No fue posible registrar la actividad. Intente nuevamente.'
+        );
+
+        // La validación debe completarse y el servicio debe
+        // intentar ejecutar el DAO antes de controlar el error.
+        expect(
+          actividadesDAO.registrarActividad
+        ).toHaveBeenCalledTimes(1);
+      }
     );
-
-    const datosEcografia = crearDatosEcografia();
-
-    await expect(
-      registrarActividadServicio(datosEcografia)
-    ).rejects.toThrow(
-      'No fue posible registrar la actividad. Intente nuevamente.'
-    );
-
-    expect(actividadesDAO.registrarActividad)
-      .toHaveBeenCalledTimes(1);
-  });
-});
+  }
+);

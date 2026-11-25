@@ -22,7 +22,6 @@ import {
   consultarMedicamentoPorId,
   editarMedicamento as actualizarMedicamento,
 } from '../../services/administracion/medicamentosService';
-import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -130,7 +129,7 @@ export default function EditarMedicamento() {
       setConcentracion(registro.concentracion || '');
       setCategoria(registro.categoria || 'Medicamento');
     } catch (e) {
-      logger.error('Error al cargar medicamento para editar:', e);
+      console.error('Error al cargar medicamento para editar:', e);
       setErrorCarga(
         e?.message || 'No se pudo cargar la información del medicamento.'
       );
@@ -153,7 +152,7 @@ export default function EditarMedicamento() {
             setCargando(false);
           }
         } catch (e) {
-          logger.error('Error al inicializar edición:', e);
+          console.error('Error al inicializar edición:', e);
 
           if (vigente) {
             setErrorCarga(
@@ -251,7 +250,7 @@ export default function EditarMedicamento() {
         ]
       );
     } catch (e) {
-      logger.error('Error al guardar medicamento:', e);
+      console.error('Error al guardar medicamento:', e);
 
       Alert.alert(
         'No se pudo guardar',

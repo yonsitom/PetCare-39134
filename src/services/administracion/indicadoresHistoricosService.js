@@ -3,7 +3,6 @@ import {
   consultarAtencionesHistoricasDAO,
   consultarDetalleAtencionesHistoricasDAO,
 } from '../../dao/administracion/indicadoresHistoricosDAO';
-import { logger } from '../../utils/logger';
 
 const MENSAJE_FILTROS_INVALIDOS =
   'Seleccione un periodo válido para realizar la consulta';
@@ -15,47 +14,83 @@ const MENSAJE_ERROR =
   'No fue posible cargar los indicadores históricos. Intente nuevamente';
 
 /**
- * Comprueba que una fecha tenga formato YYYY-MM-DD
- * y que represente una fecha real del calendario.
+ * Comprueba el formato y la existencia real de una fecha.
  */
 const esFechaValida = (fecha) => {
-  if (typeof fecha !== 'string') {
-    return false;
-  }
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+  if (
+    typeof fecha !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(fecha)
+  ) {
     return false;
   }
 
   const [anio, mes, dia] = fecha.split('-').map(Number);
-  const fechaConvertida = new Date(Date.UTC(anio, mes - 1, dia));
+  const fechaUTC = new Date(Date.UTC(anio, mes - 1, dia));
 
   return (
-    fechaConvertida.getUTCFullYear() === anio &&
-    fechaConvertida.getUTCMonth() === mes - 1 &&
-    fechaConvertida.getUTCDate() === dia
+    fechaUTC.getUTCFullYear() === anio &&
+    fechaUTC.getUTCMonth() === mes - 1 &&
+    fechaUTC.getUTCDate() === dia
   );
 };
 
 /**
- * Valida el periodo antes de consultar la base de datos.
+ * Normaliza y valida los filtros.
+ * Admite objeto o dos fechas como argumentos.
  */
-const validarFiltros = (filtros) => {
-  if (!filtros || typeof filtros !== 'object') {
-    return false;
+const normalizarFiltros = (filtros, fechaFinParametro) => {
+  let filtrosNormalizados;
+
+  if (typeof filtros === 'string') {
+    filtrosNormalizados = {
+      fechaInicio: filtros,
+      fechaFin: fechaFinParametro,
+    };
+  } else if (
+    filtros &&
+    typeof filtros === 'object' &&
+    !Array.isArray(filtros)
+  ) {
+    filtrosNormalizados = {
+      fechaInicio: filtros.fechaInicio,
+      fechaFin: filtros.fechaFin,
+      estado: filtros.estado,
+    };
+  } else {
+    filtrosNormalizados = {};
   }
 
-  const { fechaInicio, fechaFin } = filtros;
+  const fechaInicio =
+    typeof filtrosNormalizados.fechaInicio === 'string'
+      ? filtrosNormalizados.fechaInicio.trim()
+      : '';
 
-  if (!esFechaValida(fechaInicio) || !esFechaValida(fechaFin)) {
-    return false;
+  const fechaFin =
+    typeof filtrosNormalizados.fechaFin === 'string'
+      ? filtrosNormalizados.fechaFin.trim()
+      : '';
+
+  if (
+    !esFechaValida(fechaInicio) ||
+    !esFechaValida(fechaFin) ||
+    fechaInicio > fechaFin
+  ) {
+    throw new Error(MENSAJE_FILTROS_INVALIDOS);
   }
 
-  return fechaInicio <= fechaFin;
+  return {
+    fechaInicio,
+    fechaFin,
+    estado:
+      typeof filtrosNormalizados.estado === 'string' &&
+      filtrosNormalizados.estado.trim()
+        ? filtrosNormalizados.estado.trim()
+        : null,
+  };
 };
 
 /**
- * Construye la información agrupada por estado.
+ * Agrupa las atenciones por estado.
  */
 const contarPorEstado = (atenciones) => {
   return atenciones.reduce((resultado, atencion) => {
@@ -75,10 +110,11 @@ const construirGrafico = (atenciones) => {
 
   atenciones.forEach((atencion) => {
     const fecha = atencion.fecha_inicio
-      ? atencion.fecha_inicio.substring(0, 10)
+      ? String(atencion.fecha_inicio).substring(0, 10)
       : 'Fecha no disponible';
 
-    cantidadesPorFecha[fecha] = (cantidadesPorFecha[fecha] || 0) + 1;
+    cantidadesPorFecha[fecha] =
+      (cantidadesPorFecha[fecha] || 0) + 1;
   });
 
   const fechas = Object.keys(cantidadesPorFecha).sort();
@@ -94,96 +130,117 @@ const construirGrafico = (atenciones) => {
 };
 
 /**
- * RF49 - Consulta los indicadores históricos de las atenciones.
- *
- * @param {Object} filtros
- * @param {string} filtros.fechaInicio Fecha inicial YYYY-MM-DD.
- * @param {string} filtros.fechaFin Fecha final YYYY-MM-DD.
- * @param {string} [filtros.estado] Estado opcional.
+ * Valida la respuesta del DAO.
  */
-export const consultarIndicadoresHistoricos = async (filtros) => {
-  if (!validarFiltros(filtros)) {
-    throw new Error(MENSAJE_FILTROS_INVALIDOS);
+const validarResultadoDAO = (resultado) => {
+  if (
+    !resultado ||
+    resultado.error ||
+    !Array.isArray(resultado.data)
+  ) {
+    throw new Error(MENSAJE_ERROR);
   }
 
+  if (resultado.data.length === 0) {
+    throw new Error(MENSAJE_SIN_DATOS);
+  }
+
+  return resultado.data;
+};
+
+/**
+ * RF49: consultar indicadores históricos.
+ */
+export const consultarIndicadoresHistoricos = async (
+  filtros,
+  fechaFinParametro
+) => {
+  const filtrosValidados = normalizarFiltros(
+    filtros,
+    fechaFinParametro
+  );
+
   try {
-    const { data, error } =
-      await consultarAtencionesHistoricasDAO(filtros);
+    const filtrosDAO = {
+      fechaInicio: filtrosValidados.fechaInicio,
+      fechaFin: filtrosValidados.fechaFin,
+    };
 
-    if (error || !Array.isArray(data)) {
-      throw new Error(MENSAJE_ERROR);
+    if (filtrosValidados.estado) {
+      filtrosDAO.estado = filtrosValidados.estado;
     }
 
-    if (data.length === 0) {
-      throw new Error(MENSAJE_SIN_DATOS);
-    }
+    const resultado = await consultarAtencionesHistoricasDAO(
+      filtrosDAO
+    );
+
+    const atenciones = validarResultadoDAO(resultado);
 
     return {
-      totalAtenciones: data.length,
-      porEstado: contarPorEstado(data),
-      atenciones: data,
-      grafico: construirGrafico(data),
+      totalAtenciones: atenciones.length,
+      porEstado: contarPorEstado(atenciones),
+      atenciones,
+      grafico: construirGrafico(atenciones),
       filtros: {
-        fechaInicio: filtros.fechaInicio,
-        fechaFin: filtros.fechaFin,
-        estado: filtros.estado || null,
+        fechaInicio: filtrosValidados.fechaInicio,
+        fechaFin: filtrosValidados.fechaFin,
+        estado: filtrosValidados.estado,
       },
     };
   } catch (error) {
     if (
-      error.message === MENSAJE_SIN_DATOS ||
-      error.message === MENSAJE_FILTROS_INVALIDOS
+      error?.message === MENSAJE_SIN_DATOS ||
+      error?.message === MENSAJE_FILTROS_INVALIDOS
     ) {
       throw error;
     }
 
-    logger.error('Error en consultarIndicadoresHistoricos:', error);
+    console.error(
+      'Error en consultarIndicadoresHistoricos:',
+      error
+    );
 
     throw new Error(MENSAJE_ERROR);
   }
 };
 
 /**
- * RF49 - Consulta el detalle de las atenciones relacionadas
- * con el indicador y los filtros seleccionados.
- *
- * Si se proporciona estado, se utiliza como filtro adicional.
+ * RF49: consultar el detalle de un indicador.
  */
 export const consultarDetalleIndicadorHistorico = async (
   filtros,
   estadoSeleccionado
 ) => {
+  const filtrosBase = normalizarFiltros(filtros);
+
   const filtrosDetalle = {
-    ...filtros,
-    estado: estadoSeleccionado || filtros?.estado || undefined,
+    ...filtrosBase,
+    estado:
+      typeof estadoSeleccionado === 'string' &&
+      estadoSeleccionado.trim()
+        ? estadoSeleccionado.trim()
+        : filtrosBase.estado,
   };
 
-  if (!validarFiltros(filtrosDetalle)) {
-    throw new Error(MENSAJE_FILTROS_INVALIDOS);
-  }
-
   try {
-    const { data, error } =
-      await consultarDetalleAtencionesHistoricasDAO(filtrosDetalle);
+    const resultado =
+      await consultarDetalleAtencionesHistoricasDAO(
+        filtrosDetalle
+      );
 
-    if (error || !Array.isArray(data)) {
-      throw new Error(MENSAJE_ERROR);
-    }
-
-    if (data.length === 0) {
-      throw new Error(MENSAJE_SIN_DATOS);
-    }
-
-    return data;
+    return validarResultadoDAO(resultado);
   } catch (error) {
     if (
-      error.message === MENSAJE_SIN_DATOS ||
-      error.message === MENSAJE_FILTROS_INVALIDOS
+      error?.message === MENSAJE_SIN_DATOS ||
+      error?.message === MENSAJE_FILTROS_INVALIDOS
     ) {
       throw error;
     }
 
-    logger.error('Error en consultarDetalleIndicadorHistorico:', error);
+    console.error(
+      'Error en consultarDetalleIndicadorHistorico:',
+      error
+    );
 
     throw new Error(MENSAJE_ERROR);
   }

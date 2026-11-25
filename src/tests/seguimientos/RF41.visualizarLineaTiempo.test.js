@@ -19,7 +19,7 @@
 
 const {
     crearLineaTiempoService
-} = require('../../services/lineaTiempoServicio');
+} = require('../../services/atencion/lineaTiempoServicio');
 
 describe('RF41 - Visualizar línea de tiempo de una atención', () => {
 

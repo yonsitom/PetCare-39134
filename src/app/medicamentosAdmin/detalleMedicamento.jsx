@@ -21,7 +21,6 @@ import {
   desactivarMedicamento,
   reactivarMedicamento,
 } from '../../services/administracion/medicamentosService';
-import { logger } from '../../utils/logger';
 
 const C = {
   primario: '#187C72',
@@ -130,7 +129,7 @@ export default function DetalleMedicamento() {
 
       setMedicamento(resultado);
     } catch (e) {
-      logger.error('Error al consultar el medicamento:', e);
+      console.error('Error al consultar el medicamento:', e);
       setError(
         e?.message || 'No se pudo cargar la información del medicamento.'
       );
@@ -151,7 +150,7 @@ export default function DetalleMedicamento() {
             await cargarDetalle();
           }
         } catch (e) {
-          logger.error('Error al inicializar detalle:', e);
+          console.error('Error al inicializar detalle:', e);
           if (activo) {
             setError(e?.message || 'No se pudo cargar la pantalla.');
             setCargando(false);
@@ -214,7 +213,7 @@ export default function DetalleMedicamento() {
           : 'El medicamento se reactivó correctamente.'
       );
     } catch (e) {
-      logger.error('Error al cambiar el estado:', e);
+      console.error('Error al cambiar el estado:', e);
 
       setModalVisible(false);
 
@@ -283,7 +282,7 @@ export default function DetalleMedicamento() {
           <Text style={styles.separador}> / </Text>
           <Text
             style={styles.enlaceMiga}
-            onPress={() => router.replace('/administracion')}
+            onPress={() => router.replace('/administracion/administracion')}
           >
             Administración
           </Text>

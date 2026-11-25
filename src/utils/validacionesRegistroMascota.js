@@ -1,34 +1,24 @@
-
 /**
  * RF17 - Validaciones para registrar una mascota.
  *
  * Responsabilidad:
  * Validar los datos antes de solicitar el registro en Supabase.
  *
- * Este módulo es independiente de React Native y Supabase,
- * por lo que puede probarse mediante Jest (TDD).
+ * Módulo independiente de React Native y Supabase.
+ * Permite realizar pruebas unitarias mediante Jest (TDD).
  */
 
 const MENSAJES = {
   camposObligatorios:
     'Complete los campos obligatorios para continuar.',
-
   propietario:
     'Seleccione un propietario para continuar.',
-
   datosInvalidos:
     'Verifique los datos ingresados e inténtelo nuevamente.',
-
   errorRegistro:
     'No se pudo registrar la mascota. Intente nuevamente.',
 };
 
-/**
- * Convierte una fecha ISO (AAAA-MM-DD) o visible (DD/MM/AAAA)
- * en una fecha local válida.
- *
- * Retorna null si la fecha no existe o tiene un formato inválido.
- */
 function convertirFechaNacimiento(valor) {
   if (typeof valor !== 'string' || !valor.trim()) {
     return null;
@@ -49,8 +39,6 @@ function convertirFechaNacimiento(valor) {
 
   const fecha = new Date(anio, mes - 1, dia);
 
-  // Evita que JavaScript normalice fechas inexistentes,
-  // por ejemplo, el 45/13/2021.
   if (
     fecha.getFullYear() !== anio ||
     fecha.getMonth() !== mes - 1 ||
@@ -62,15 +50,19 @@ function convertirFechaNacimiento(valor) {
   return fecha;
 }
 
+function esFechaValida(fechaReferencia) {
+  return (
+    fechaReferencia instanceof Date &&
+    !Number.isNaN(fechaReferencia.getTime())
+  );
+}
+
 /**
  * Valida los datos requeridos para registrar una mascota.
  *
- * @param {Object} datos Datos que provienen del formulario.
- * @param {Date} fechaReferencia Fecha usada para comprobar
- *        si el nacimiento está en el futuro. Por defecto,
- *        se utiliza la fecha actual.
- *
- * @returns {{valido: boolean, mensaje: string}}
+ * @param {Object} datos Datos del formulario.
+ * @param {Date} fechaReferencia Fecha usada para validar
+ *        que el nacimiento no sea posterior al día actual.
  */
 export function validarDatosRegistroMascota(
   datos,
@@ -83,19 +75,18 @@ export function validarDatosRegistroMascota(
     };
   }
 
-  // CP03: el propietario es obligatorio.
-  if (
-    datos.propietario_id === null ||
-    datos.propietario_id === undefined ||
-    String(datos.propietario_id).trim() === ''
-  ) {
+  const propietarioValido =
+    datos.propietario_id !== null &&
+    datos.propietario_id !== undefined &&
+    String(datos.propietario_id).trim() !== '';
+
+  if (!propietarioValido) {
     return {
       valido: false,
       mensaje: MENSAJES.propietario,
     };
   }
 
-  // CP02: nombre y especie son obligatorios.
   if (
     typeof datos.nombre !== 'string' ||
     !datos.nombre.trim() ||
@@ -108,26 +99,23 @@ export function validarDatosRegistroMascota(
     };
   }
 
-  // CP04: la fecha es opcional, pero si se proporciona
-  // debe existir realmente y no ser posterior al día actual.
-  if (
+  const fechaInformada =
     datos.fecha_nacimiento !== null &&
     datos.fecha_nacimiento !== undefined &&
-    String(datos.fecha_nacimiento).trim() !== ''
-  ) {
+    String(datos.fecha_nacimiento).trim() !== '';
+
+  if (fechaInformada) {
     const fechaNacimiento = convertirFechaNacimiento(
       String(datos.fecha_nacimiento)
     );
 
-    if (!fechaNacimiento || !(fechaReferencia instanceof Date) ||
-        Number.isNaN(fechaReferencia.getTime())) {
+    if (!fechaNacimiento || !esFechaValida(fechaReferencia)) {
       return {
         valido: false,
         mensaje: MENSAJES.datosInvalidos,
       };
     }
 
-    // Comparar por día calendario para evitar problemas de horas.
     const nacimientoDia = new Date(
       fechaNacimiento.getFullYear(),
       fechaNacimiento.getMonth(),
@@ -154,10 +142,6 @@ export function validarDatosRegistroMascota(
   };
 }
 
-/**
- * Evita mostrar detalles internos del servicio al usuario.
- * Se registra un mensaje funcional y uniforme para CP05.
- */
 export function obtenerMensajeErrorRegistroMascota() {
   return MENSAJES.errorRegistro;
 }

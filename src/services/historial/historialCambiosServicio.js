@@ -1,3 +1,4 @@
+
 import {
     consultarHistorialCambios,
     consultarDetalleHistorial,
@@ -12,6 +13,36 @@ const ACCIONES_VALIDAS = [
     "ELIMINAR",
 ];
 
+const ENTIDADES_VALIDAS = [
+    "Todos",
+    "propietarios",
+    "mascotas",
+    "atenciones",
+    "actividades",
+    "perfiles",
+];
+
+/**
+ * Valida que una fecha exista realmente en el calendario.
+ */
+function esFechaValida(fecha) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+        return false;
+    }
+
+    const [anio, mes, dia] = fecha.split("-").map(Number);
+
+    const fechaComprobacion = new Date(
+        Date.UTC(anio, mes - 1, dia)
+    );
+
+    return (
+        fechaComprobacion.getUTCFullYear() === anio &&
+        fechaComprobacion.getUTCMonth() === mes - 1 &&
+        fechaComprobacion.getUTCDate() === dia
+    );
+}
+
 /**
  * Valida los filtros de búsqueda.
  */
@@ -19,23 +50,36 @@ export function validarFiltrosHistorial(filtros = {}) {
     const errores = [];
 
     const tipoAccion = filtros.tipoAccion || "Todos";
+    const entidad = filtros.entidad || "Todos";
 
     if (!ACCIONES_VALIDAS.includes(tipoAccion)) {
-        errores.push("El tipo de acción seleccionado no es válido.");
+        errores.push(
+            "El tipo de acción seleccionado no es válido."
+        );
+    }
+
+    if (!ENTIDADES_VALIDAS.includes(entidad)) {
+        errores.push(
+            "La entidad seleccionada no es válida."
+        );
     }
 
     if (
         filtros.fechaDesde &&
-        !/^\d{4}-\d{2}-\d{2}$/.test(filtros.fechaDesde)
+        !esFechaValida(filtros.fechaDesde)
     ) {
-        errores.push("La fecha inicial no tiene un formato válido.");
+        errores.push(
+            "La fecha inicial no es válida."
+        );
     }
 
     if (
         filtros.fechaHasta &&
-        !/^\d{4}-\d{2}-\d{2}$/.test(filtros.fechaHasta)
+        !esFechaValida(filtros.fechaHasta)
     ) {
-        errores.push("La fecha final no tiene un formato válido.");
+        errores.push(
+            "La fecha final no es válida."
+        );
     }
 
     if (
@@ -46,6 +90,23 @@ export function validarFiltrosHistorial(filtros = {}) {
         errores.push(
             "La fecha inicial no puede ser posterior a la fecha final."
         );
+    }
+
+    if (
+        filtros.pagina !== undefined &&
+        (!Number.isInteger(Number(filtros.pagina)) ||
+            Number(filtros.pagina) < 1)
+    ) {
+        errores.push("El número de página no es válido.");
+    }
+
+    if (
+        filtros.limite !== undefined &&
+        (!Number.isInteger(Number(filtros.limite)) ||
+            Number(filtros.limite) < 1 ||
+            Number(filtros.limite) > 100)
+    ) {
+        errores.push("El límite de registros no es válido.");
     }
 
     return {
@@ -64,13 +125,14 @@ export async function obtenerHistorialCambios(filtros = {}) {
         throw new Error(validacion.errores.join("\n"));
     }
 
-    return await consultarHistorialCambios({
+    return consultarHistorialCambios({
         tipoAccion: filtros.tipoAccion || "Todos",
+        entidad: filtros.entidad || "Todos",
         fechaDesde: filtros.fechaDesde || null,
         fechaHasta: filtros.fechaHasta || null,
         usuarioId: filtros.usuarioId || null,
-        pagina: filtros.pagina || 1,
-        limite: filtros.limite || 20,
+        pagina: Number(filtros.pagina) || 1,
+        limite: Number(filtros.limite) || 20,
     });
 }
 
@@ -78,14 +140,20 @@ export async function obtenerHistorialCambios(filtros = {}) {
  * Obtiene el detalle de un cambio.
  */
 export async function obtenerDetalleHistorial(historialCambioId) {
-    if (!historialCambioId) {
-        throw new Error("Debe seleccionar un registro del historial.");
+    const id = Number(historialCambioId);
+
+    if (!Number.isInteger(id) || id <= 0) {
+        throw new Error(
+            "Debe seleccionar un registro válido del historial."
+        );
     }
 
-    const registro = await consultarDetalleHistorial(historialCambioId);
+    const registro = await consultarDetalleHistorial(id);
 
     if (!registro) {
-        throw new Error("No se encontró el registro seleccionado.");
+        throw new Error(
+            "No se encontró el registro seleccionado."
+        );
     }
 
     return registro;
@@ -101,5 +169,11 @@ export async function obtenerTotalHistorial(filtros = {}) {
         throw new Error(validacion.errores.join("\n"));
     }
 
-    return await contarRegistrosHistorial(filtros);
+    return contarRegistrosHistorial({
+        tipoAccion: filtros.tipoAccion || "Todos",
+        entidad: filtros.entidad || "Todos",
+        fechaDesde: filtros.fechaDesde || null,
+        fechaHasta: filtros.fechaHasta || null,
+        usuarioId: filtros.usuarioId || null,
+    });
 }

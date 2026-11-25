@@ -1,5 +1,5 @@
 
-import { iniciarSesionConCorreo } from '../../services/autenticacionServicio';
+import { iniciarSesionConCorreo } from '../../services/autentificacion/autenticacionServicio';
 import { supabase } from '../../services/supabase';
 
 jest.mock('../../services/supabase', () => ({

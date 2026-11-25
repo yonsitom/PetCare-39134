@@ -1,4 +1,6 @@
+
 import React from 'react';
+
 import {
   StatusBar,
   StyleSheet,
@@ -14,7 +16,7 @@ const COLORES = {
   fondoBoton: 'rgba(255,255,255,0.13)',
 };
 
-export default function EncabezadoPetCare({
+function EncabezadoPetCare({
   onAbrirMenu,
   onAbrirNotificaciones,
   titulo = 'PetCare',
@@ -71,6 +73,9 @@ export default function EncabezadoPetCare({
     </View>
   );
 }
+
+export { EncabezadoPetCare };
+export default EncabezadoPetCare;
 
 const estilos = StyleSheet.create({
   contenedor: {

@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { correoTieneFormatoValido } from '../../services/recuperacionContrasenaServicio';
+import { correoTieneFormatoValido } from '../../services/persistencia/recuperacionContrasenaServicio';
 
 export default function FormularioRecuperarContrasena({
   onEnviarEnlace,

@@ -21,10 +21,9 @@ import {
 } from 'expo-router';
 
 import { supabase } from '../../services/supabase';
-import { consultarMascotaPorId } from '../../dao/mascotaDAO';
+import { consultarMascotaPorId } from '../../dao/mascotas/mascotaDAO';
 import EncabezadoPetCare from '../../components/layout/EncabezadoPetCare';
 import MenuLateralDerecho from '../../components/layout/MenuLateralDerecho';
-import { logger } from '../../utils/logger';
 
 // Colores compartidos con las demás pantallas de PetCare.
 const C = {
@@ -174,7 +173,7 @@ export default function FichaMascotaScreen() {
           .single();
 
         if (errorPerfil) {
-          logger.error(
+          console.error(
             'Error al consultar el perfil:',
             errorPerfil.message
           );
@@ -186,7 +185,7 @@ export default function FichaMascotaScreen() {
           setRolUsuario(data.rol || '');
         }
       } catch (e) {
-        logger.error('Error al cargar el perfil:', e);
+        console.error('Error al cargar el perfil:', e);
       }
     }
 
@@ -222,7 +221,7 @@ export default function FichaMascotaScreen() {
         setMascota(resultado);
       }
     } catch (e) {
-      logger.error('Error al cargar ficha de mascota:', e);
+      console.error('Error al cargar ficha de mascota:', e);
       setError('No se pudo cargar la ficha. Inténtalo nuevamente.');
     } finally {
       setCargando(false);
@@ -278,7 +277,7 @@ export default function FichaMascotaScreen() {
       setMenuAbierto(false);
       router.replace('/');
     } catch (e) {
-      logger.error('Error al cerrar sesión:', e);
+      console.error('Error al cerrar sesión:', e);
 
       Alert.alert(
         'Error',
@@ -317,7 +316,7 @@ export default function FichaMascotaScreen() {
     }
 
     router.push({
-      pathname: '/historiaMascota',
+      pathname: '/mascotas/historiaMascota',
       params: {
         numeroHistoria: String(mascota.numero_historia),
         nombre: String(mascota.nombre || ''),

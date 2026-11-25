@@ -15,16 +15,16 @@ const consultarActividadesPorAtencionMock = jest.fn();
 function cargarControladorConMocks() {
   jest.resetModules();
 
-  jest.doMock('../../dao/atencionesDAO', () => ({
-    consultarAtenciones: jest.fn(),
-    consultarMascotasParaAtencion: jest.fn(),
-    crearAtencionInicial: jest.fn(),
-    guardarDatosConsulta: jest.fn(),
-    consultarAtencionPorId: consultarAtencionPorIdMock,
-    consultarDatosConsulta: jest.fn(),
-  }));
+jest.doMock('../../dao/atencion/atencionesDAO', () => ({
+  consultarAtenciones: jest.fn(),
+  consultarMascotasParaAtencion: jest.fn(),
+  crearAtencionInicial: jest.fn(),
+  guardarDatosConsulta: jest.fn(),
+  consultarAtencionPorId: consultarAtencionPorIdMock,
+  consultarDatosConsulta: jest.fn(),
+}));
 
-  jest.doMock('../../dao/actividadesDAO', () => ({
+  jest.doMock('../../dao/actividades/actividadesDAO', () => ({
     consultarActividadesPorAtencion:
       consultarActividadesPorAtencionMock,
     validarQueNoExistaActividadAbierta: jest.fn(),
@@ -101,8 +101,8 @@ describe('RF24: Consultar el detalle completo de una atención veterinaria', () 
   });
 
   afterEach(() => {
-    jest.dontMock('../../dao/atencionesDAO');
-    jest.dontMock('../../dao/actividadesDAO');
+    jest.dontMock('../../dao/atencion/atencionesDAO');
+    jest.dontMock('../../dao/actividades/actividadesDAO');
     jest.resetModules();
   });
 

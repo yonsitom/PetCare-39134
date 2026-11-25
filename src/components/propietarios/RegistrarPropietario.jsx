@@ -12,11 +12,12 @@ import {
 } from 'react-native';
 
 import FormularioPropietario from './formularioPropietario';
-import { logger } from '../../utils/logger';
 import {
   registrarPropietario,
   validarDisponibilidadPropietario,
-} from '../../dao/propietarioDAO';const C = {
+}from '../../dao/propietario/propietarioDAO';
+
+const C = {
   primario: '#187C72',
   texto: '#253746',
   secundario: '#64748B',
@@ -181,7 +182,7 @@ export default function RegistrarPropietario({
       setMensajeGeneral(
         'No se pudieron verificar los datos. Intente nuevamente.'
       );
-      logger.error('Error al validar duplicados:', error);
+      console.error('Error al validar duplicados:', error);
     }
   } finally {
     setGuardando(false);
@@ -238,7 +239,7 @@ export default function RegistrarPropietario({
         onRegistrado(propietario || datosLimpios);
       }
     } catch (error) {
-      logger.error('Error al registrar propietario:', error);
+      console.error('Error al registrar propietario:', error);
 
       setModalConfirmacion(false);
 
@@ -285,26 +286,12 @@ setMensajeGeneral('');
 
   return (
     <View style={estilos.contenedor}>
-      {mensajeGeneral !== '' && (
-        <View
-          style={[
-            estilos.alerta,
-            campoConError === 'documento_identidad' ||
-            campoConError === 'correo'
-              ? estilos.alertaError
-              : estilos.alertaInformativa,
-          ]}
-        >
-          <Text style={estilos.textoAlerta}>{mensajeGeneral}</Text>
-        </View>
-      )}
-
+      
       <FormularioPropietario
         datos={datos}
         actualizarCampo={actualizarCampo}
         errores={errores}
         campoConError={campoConError}
-        mensajeGeneral={mensajeGeneral}
         guardando={guardando}
         onCancelar={onCancelar || onVolver}
         onContinuar={revisarDatos}

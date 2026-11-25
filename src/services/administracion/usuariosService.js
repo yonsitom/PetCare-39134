@@ -1,3 +1,4 @@
+
 /**
  * PETCARE - SERVICIO DE USUARIOS
  *
@@ -22,6 +23,33 @@ import {
 } from '../../dao/administracion/usuariosDAO';
 
 /**
+ * Normaliza el estado de una cuenta.
+ *
+ * Acepta variaciones como:
+ * - Activo
+ * - activo
+ * - ACTIVO
+ * - " Activo "
+ *
+ * Devuelve siempre "Activo" o "Inactivo".
+ */
+function normalizarEstadoCuenta(estado) {
+  const estadoNormalizado = String(estado ?? '')
+    .trim()
+    .toLowerCase();
+
+  if (estadoNormalizado === 'activo') {
+    return 'Activo';
+  }
+
+  if (estadoNormalizado === 'inactivo') {
+    return 'Inactivo';
+  }
+
+  return 'Inactivo';
+}
+
+/**
  * CUS44: consulta los usuarios y normaliza los campos.
  */
 export async function consultarUsuarios() {
@@ -34,7 +62,10 @@ export async function consultarUsuarios() {
     telefono: usuario.telefono || '',
     direccion: usuario.direccion || '',
     rol: usuario.rol || 'Sin rol',
-    estado_cuenta: usuario.estado_cuenta || 'Inactivo',
+
+    // Normalización para que los filtros y conteos
+    // reconozcan correctamente los estados de las cuentas.
+    estado_cuenta: normalizarEstadoCuenta(usuario.estado_cuenta),
   }));
 }
 
@@ -60,7 +91,6 @@ export async function gestionarCambioEstadoCuenta({
   // Verificar que la solicitud tenga los datos necesarios.
   if (!confirmado) {
     // CP02 - La cancelación descarta la operación pendiente.
-    // No se llama al DAO; la cuenta conserva su estado actual.
     return {
       ok: false,
       cancelado: true,
@@ -110,7 +140,6 @@ export async function gestionarCambioEstadoCuenta({
     };
   } catch (error) {
     // CP04 - Se propaga el fallo como resultado controlado.
-    // La interfaz no debe mostrar un mensaje de éxito.
     return {
       ok: false,
       cancelado: false,
